@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 project(SpmX)
 
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 set(SPMX_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/include")
 set(SPMX_SRC_DIRS "${CMAKE_CURRENT_LIST_DIR}/src")

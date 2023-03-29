@@ -10,37 +10,39 @@
 namespace SpmX
 {
     enum SolverStatus{ Undefined, Success, NumericalError, NotConverge };
+    template<typename Derived>
     class FactorizeSolver
     {
+        protected:
+            SolverStatus status = Undefined;
         public:
-            virtual void compute(const DynamicSparseMatrix& A) = 0;
-            virtual Vector solve(const Vector& b) const = 0;
+            SolverStatus info() const { return status; }
+            void compute(const DynamicSparseMatrix& A) { static_cast<Derived*>(this)->compute(A); };
+            Vector solve(const Vector& b) const { static_cast<Derived*>(this)->solve(b); };
     };
+
+    template<typename Derived>
     class IterativeSolver
     {
         public:
-            SolverStatus info() const { return status; }
             virtual Vector solve(const Vector& b) const = 0;
         protected:
             SolverStatus status = Undefined;
     };
-    class JacobiSolver final : public IterativeSolver
+    class JacobiSolver final : public IterativeSolver<JacobiSolver>
     {
         public:
-            SolverStatus info() const { return status; }
-            Vector solve(const Vector& b) const override;
+            Vector solve(const Vector& b) const;
     };
-    class GaussSeidelSolver final : public IterativeSolver
+    class GaussSeidelSolver final : public IterativeSolver<GaussSeidelSolver>
     {
         public:
-            SolverStatus info() const { return status; }
-            Vector solve(const Vector& b) const override;
+            Vector solve(const Vector& b) const;
     };
-    class CGSolver final : public IterativeSolver
+    class CGSolver final : public IterativeSolver<CGSolver>
     {
         public:
-            SolverStatus info() const { return status; }
-            Vector solve(const Vector& b) const override;
+            Vector solve(const Vector& b) const;
     };
 
 }

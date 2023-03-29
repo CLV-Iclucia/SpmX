@@ -2,8 +2,8 @@
 // Created by creeper on 23-3-20.
 //
 
-#ifndef SPMX_LIST_H
-#define SPMX_LIST_H
+#ifndef SPMX_MYSTL_H
+#define SPMX_MYSTL_H
 
 #include <algorithm>
 #include <spmx_types.h>
@@ -27,11 +27,7 @@ namespace SpmX
             };
             Node *head = nullptr, *tail = nullptr;
             uint sz = 0;
-            ~List()
-            {
-                if(!head) return;
-                clear();
-            }
+            ~List() { clear(); }
         public:
             class iterator
             {
@@ -84,4 +80,4 @@ namespace SpmX
 
 
 
-#endif //SPMX_LIST_H
+#endif //SPMX_MYSTL_H

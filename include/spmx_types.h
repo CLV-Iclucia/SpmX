@@ -10,6 +10,7 @@ namespace SpmX
     using Real = double;
     using uint = unsigned int;
     using Triplet = std::tuple<uint, uint, Real>;
-    const Real EPS = 1e-15;
+    static const Real REAL_EPS = 1e-14;
+    static const float FLOAT_EPS = 1e-6;
 }
 #endif //SPMX_TYPES_H

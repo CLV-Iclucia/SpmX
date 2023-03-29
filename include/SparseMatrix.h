@@ -11,6 +11,7 @@
 #include <spmx_types.h>
 #include <spmx_options.h>
 #include <spmx_Vector.h>
+#include <vector>
 
 namespace SpmX
 {
@@ -32,8 +33,9 @@ namespace SpmX
             friend Vector operator*(const Vector& V, const DynamicSparseMatrix& spm);
             DynamicSparseMatrix() = default;
             DynamicSparseMatrix(uint _m, uint _n) : m(_m), n(_n) {}
-            uint rows() const { return m; };
-            uint cols() const { return n; };
+            uint rows() const { return m; }
+            uint cols() const { return n; }
+            uint nonZeros() const { return nnz; }
             void setFromTriplets(Triplet *begin, Triplet *end, StoreType type = CSR);
             DynamicSparseMatrix operator+(const DynamicSparseMatrix& A) const;
             DynamicSparseMatrix operator*(const DynamicSparseMatrix& A) const;
@@ -48,6 +50,13 @@ namespace SpmX
             {
                 eliminateDuplicates();
                 eliminateZeros();
+            }
+            void toTriplets(std::vector<Triplet>& v) const
+            {
+                if(!inOrder) reOrder();
+                for(uint i = 0; i < m; i++)
+                    for(uint j = outer[i]; j < outer[i + 1]; j++)
+                        v.emplace_back(i, inner[j], val[j]);
             }
             ~DynamicSparseMatrix() { free(outer); free(inner); free(val); }
     };

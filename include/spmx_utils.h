@@ -7,9 +7,24 @@
 #include <spmx_types.h>
 namespace SpmX
 {
-    inline bool isZero(Real x)
+    template<typename T>
+    inline bool isZero(T x)
     {
-        return x >= -EPS && x <= EPS;
+        if constexpr (std::is_same_v<T, Real>)
+            return x >= -REAL_EPS && x <= REAL_EPS;
+        else if constexpr (std::is_same_v<T, float>)
+            return x >= -FLOAT_EPS && x <= FLOAT_EPS;
+        else return x == static_cast<T>(0);
+    }
+
+    template<typename T>
+    inline bool isEqual(T x, T y)
+    {
+        if constexpr (std::is_same_v<T, Real>)
+            return x - y >= -REAL_EPS && x - y <= REAL_EPS;
+        else if constexpr (std::is_same_v<T, float>)
+            return x - y >= -FLOAT_EPS && x - y <= FLOAT_EPS;
+        else return x == y;
     }
 }
 #endif //SPMX_SPMX_UTILS_H
