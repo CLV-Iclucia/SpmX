@@ -5,7 +5,7 @@
 #include <fstream>
 
 using namespace SpmX;
-const uint MAX_ROWS = 3, MAX_COLS = 3, MAX_NNZ = 10;
+const uint MAX_ROWS = 2, MAX_COLS = 2, MAX_NNZ = 10;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 void rand_fill_mat(Real mat[][MAX_COLS], uint m, uint n, uint nnz)
@@ -59,10 +59,9 @@ void test_set()
     while(kase < MAX_CASES)
     {
         memset(golden, 0, sizeof(golden));
-        uint m = rand() % MAX_ROWS;
-        uint n = rand() % MAX_COLS;
-        if(!m || !n) continue;
-        uint nnz = rand() % MAX_NNZ;
+        uint m = rand() % MAX_ROWS + 1;
+        uint n = rand() % MAX_COLS + 1;
+        uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(golden, m, n, nnz);
         DynamicSparseMatrix spm;
         spm.resize(m, n);

@@ -78,8 +78,7 @@ namespace SpmX
         {
             if(outer) outer = static_cast<uint*>(realloc(outer, (m + 1) * sizeof(uint)));
             else outer = static_cast<uint*>(malloc((m + 1) * sizeof(uint)));
-            auto list = static_cast<List<std::tuple<uint, Real>>*>(malloc(m * sizeof(List<std::tuple<uint, Real>>)));
-            memset(outer, 0, (m + 1) * sizeof(uint));
+            auto list = new List<std::tuple<uint, Real>>[m];
             for(Triplet *p = begin; p < end; p++)
             {
                 if(isZero(std::get<2>(*p))) continue;
@@ -95,9 +94,10 @@ namespace SpmX
                     val[nnz++] = std::get<1>(tp);
                 }
             }
+            outer[0] = 0;
             for(uint i = 1; i <= m; i++)
                 outer[i] += outer[i - 1];
-            free(list);
+            delete[] list;
         }
         refineStorage();
         for(uint i = 0; i < m; i++)
@@ -316,6 +316,7 @@ namespace SpmX
         {
             if(spm.storeType == DynamicSparseMatrix::CSR)
             {
+                if(!spm.nnz) return o;
                 for(int i = 0; i < spm.m; i++)
                     for (uint j = spm.outer[i]; j < spm.outer[i + 1]; j++)
                         o << "(" << i << ", " << spm.inner[j] << ", " << spm.val[j] << ")" << std::endl;
@@ -342,12 +343,10 @@ namespace SpmX
         uint *tmp_a = static_cast<uint*>(malloc((m + 1) * sizeof(uint)));
         uint *tmp_b = static_cast<uint*>(malloc(nnz * sizeof(uint)));
         Real *tmp_v = static_cast<Real*>(malloc(nnz * sizeof(Real)));
-        memcpy(outer, tmp_a, sizeof(uint) * (m + 1));
-        memcpy(inner, tmp_b, sizeof(uint) * nnz);
-        memcpy(val, tmp_v, sizeof(Real) * nnz);
-        outer = static_cast<uint*>(malloc((n + 1) * sizeof(uint)));
-        inner = static_cast<uint*>(malloc(nnz * sizeof(uint)));
-        val = static_cast<Real*>(malloc(nnz * sizeof(Real)));
+        memcpy(tmp_a, outer, sizeof(uint) * (m + 1));
+        memcpy(tmp_b, inner, sizeof(uint) * nnz);
+        memcpy(tmp_v, val, sizeof(Real) * nnz);
+        outer = static_cast<uint*>(realloc(outer, (n + 1) * sizeof(uint)));
         uint *col_cnt = static_cast<uint*>(malloc(n * sizeof(uint)));
         uint *bucket = static_cast<uint*>(malloc(n * sizeof(uint)));
         memset(col_cnt, 0, sizeof(uint) * n);

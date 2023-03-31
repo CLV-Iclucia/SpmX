@@ -27,7 +27,6 @@ namespace SpmX
             };
             Node *head = nullptr, *tail = nullptr;
             uint sz = 0;
-            ~List() { clear(); }
         public:
             class iterator
             {
@@ -56,7 +55,7 @@ namespace SpmX
             }
             void push_back(const T& ele)
             {
-                if(!tail) head = tail = new Node(ele);
+                if(!sz) head = tail = new Node(ele);
                 else
                 {
                     tail->nxt = new Node(ele);
@@ -68,14 +67,20 @@ namespace SpmX
             constexpr iterator end() const { return iterator(); }
             void clear()
             {
-                if(!head) return ;
-                for(Node *p = head, *pn = head->nxt; pn != nullptr; p = p->nxt, pn = p->nxt)
+                if(!sz) return ;
+                Node *p = head, *pn = head->nxt;
+                while(true)
                 {
-                    free(p);
+                    delete p;
                     p = pn;
+                    if(!p) break;
+                    pn = p->nxt;
                 }
+                head = tail = nullptr;
+                sz = 0;
             }
             bool empty() const { return sz == 0; }
+            ~List() { clear(); }
     };
 }
 
