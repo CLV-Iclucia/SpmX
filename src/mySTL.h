@@ -32,10 +32,11 @@ namespace SpmX
             class iterator
             {
                 private:
-                    Node* ptr;
+                    Node* ptr = nullptr;
                 public:
+                    iterator() = default;
                     explicit iterator(Node* _ptr) : ptr(_ptr) {}
-                    iterator operator ++()
+                    iterator& operator ++()
                     {
                         ptr = ptr->nxt;
                         return *this;
@@ -55,7 +56,7 @@ namespace SpmX
             }
             void push_back(const T& ele)
             {
-                if(!tail) head = new Node(ele);
+                if(!tail) head = tail = new Node(ele);
                 else
                 {
                     tail->nxt = new Node(ele);
@@ -64,7 +65,7 @@ namespace SpmX
                 sz++;
             }
             iterator begin() const { return iterator(head); }
-            iterator end() const { return iterator(nullptr); }
+            constexpr iterator end() const { return iterator(); }
             void clear()
             {
                 if(!head) return ;

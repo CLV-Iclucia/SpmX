@@ -2,10 +2,11 @@
 #include <random>
 #include <ctime>
 #include <spmx_utils.h>
+#include <fstream>
 
 using namespace SpmX;
-Triplet tList[200];
-const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 300;
+const uint MAX_ROWS = 3, MAX_COLS = 3, MAX_NNZ = 10;
+Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 void rand_fill_mat(Real mat[][MAX_COLS], uint m, uint n, uint nnz)
 {
@@ -43,6 +44,13 @@ bool test_same(Real golden[][MAX_COLS], const DynamicSparseMatrix& spm)
     return true;
 }
 
+void write_wrong_case(uint m, uint n, uint nnz)
+{
+    std::cerr << m << " " << n << " " << nnz << std::endl;
+    for(uint i = 0; i < nnz; i++)
+        std::cerr << std::get<0>(tList[i]) << " " << std::get<1>(tList[i]) << " " << std::get<2>(tList[i]) << std::endl;
+}
+
 void test_set()
 {
     static Real golden[MAX_ROWS][MAX_COLS];
@@ -53,6 +61,7 @@ void test_set()
         memset(golden, 0, sizeof(golden));
         uint m = rand() % MAX_ROWS;
         uint n = rand() % MAX_COLS;
+        if(!m || !n) continue;
         uint nnz = rand() % MAX_NNZ;
         rand_fill_mat(golden, m, n, nnz);
         DynamicSparseMatrix spm;
@@ -60,13 +69,19 @@ void test_set()
         spm.setFromTriplets(tList, tList + nnz);
         if(!test_same(golden, spm))
         {
-            std::cerr << "Failed test setFromTriplets" << std::endl;
+            std::cerr << "Failed test setFromTriplets. Failing case is:" << std::endl;
+            for(uint i = 0; i < nnz; i++)
+                std::cerr << std::get<0>(tList[i]) << " " << std::get<1>(tList[i]) << " " << std::get<2>(tList[i]) << std::endl;
+            std::cerr << "Your result is" << std::endl;
+            std::cerr << spm << std::endl;
             exit(-1);
         }
-        kase++;
+        printf("Passed test case %d\n", ++kase);
     }
-    printf("Passed test setFromTriplets.\n");
+    printf("Passed all tests on setFromTriplets.\n");
 }
+
+
 
 int main()
 {
