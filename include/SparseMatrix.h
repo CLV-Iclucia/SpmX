@@ -29,6 +29,7 @@ namespace SpmX
             ///< Before operations this field will be checked. And reOrder will be called if it's false.
             void reOrder() const;
         public:
+            DynamicSparseMatrix(uint _m, uint _n, uint _nnz) : m(_m), n(_n), nnz(_nnz) { }
             friend std::ostream& operator<<(std::ostream& o, const DynamicSparseMatrix& spm);
             friend Vector operator*(const Vector& V, const DynamicSparseMatrix& spm);
             DynamicSparseMatrix() = default;
@@ -53,7 +54,7 @@ namespace SpmX
             }
             void toTriplets(std::vector<Triplet>& v) const
             {
-                if(!inOrder) reOrder();
+                //if(!inOrder) reOrder();
                 for(uint i = 0; i < m; i++)
                     for(uint j = outer[i]; j < outer[i + 1]; j++)
                         v.emplace_back(i, inner[j], val[j]);

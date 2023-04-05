@@ -67,11 +67,10 @@ namespace SpmX
     {
         assert(end >= begin);
         storeType = type;
-        nnz = end - begin;
-        if(inner) inner = static_cast<uint*>(realloc(inner, nnz * sizeof(uint)));
-        else inner = static_cast<uint*>(malloc(nnz * sizeof(uint)));
-        if(val) val = static_cast<Real*>(realloc(val, nnz * sizeof(Real)));
-        else val = static_cast<Real*>(malloc(nnz * sizeof(Real)));
+        if(inner) inner = static_cast<uint*>(realloc(inner, (end - begin) * sizeof(uint)));
+        else inner = static_cast<uint*>(malloc((end - begin) * sizeof(uint)));
+        if(val) val = static_cast<Real*>(realloc(val, (end - begin) * sizeof(Real)));
+        else val = static_cast<Real*>(malloc((end - begin) * sizeof(Real)));
         nnz = 0;
         inOrder = true;
         if(type == CSR)
@@ -84,19 +83,23 @@ namespace SpmX
                 if(isZero(std::get<2>(*p))) continue;
                 list[std::get<0>(*p)].push_back({std::get<1>(*p), std::get<2>(*p)});
             }
+            outer[0] = 0;
             for(uint i = 0; i < m; i++)
             {
-                if(list[i].empty()) continue;
-                outer[i + 1] = list[i].size();
+                if(list[i].empty())
+                {
+                    outer[i + 1] = outer[i];
+                    continue;
+                }
+                outer[i + 1] = outer[i] + list[i].size();
                 for(std::tuple<uint, Real> tp : list[i])
                 {
                     inner[nnz] = std::get<0>(tp);
                     val[nnz++] = std::get<1>(tp);
                 }
             }
-            outer[0] = 0;
-            for(uint i = 1; i <= m; i++)
-                outer[i] += outer[i - 1];
+            for(uint i = 0; i <= m; i++)
+                assert(outer[i] >= 0 && outer[i] <= nnz);
             delete[] list;
         }
         refineStorage();
@@ -347,32 +350,28 @@ namespace SpmX
         memcpy(tmp_b, inner, sizeof(uint) * nnz);
         memcpy(tmp_v, val, sizeof(Real) * nnz);
         outer = static_cast<uint*>(realloc(outer, (n + 1) * sizeof(uint)));
-        uint *col_cnt = static_cast<uint*>(malloc(n * sizeof(uint)));
         uint *bucket = static_cast<uint*>(malloc(n * sizeof(uint)));
-        memset(col_cnt, 0, sizeof(uint) * n);
+        memset(outer, 0, sizeof(uint) * n);
         memset(bucket, 0, sizeof(uint) * n);
-        for(int i = 0; i < nnz; i++) col_cnt[tmp_b[i]]++;
-        for(int i = 1; i < m; i++)
-            col_cnt[i] += col_cnt[i - 1];
+        for(int i = 0; i < nnz; i++) outer[tmp_b[i]]++;
+        for(int i = 1; i < n; i++)
+            outer[i] += outer[i - 1];
+        outer[n] = nnz;
         for(int i = 0; i < m; i++)
         {
             for(uint j = tmp_a[i]; j < tmp_a[i + 1]; j++)
             {
-                uint idx = tmp_b[i] ? col_cnt[inner[i] - 1] + bucket[inner[i]] : bucket[inner[i]];
+                uint idx = tmp_b[j] ? outer[tmp_b[j] - 1] + bucket[tmp_b[j]] : bucket[tmp_b[j]];
                 inner[idx] = i;
                 val[idx] = tmp_v[j];
-                bucket[tmp_b[i]]++;
+                bucket[tmp_b[j]]++;
             }
         }
-        outer[0] = 0;
-        for(int i = 1; i <= n; i++)
-            outer[i] = col_cnt[i];
         outer[n] = nnz;
         free(tmp_a);
         free(tmp_b);
         free(tmp_v);
         free(bucket);
-        free(col_cnt);
     }
     /**
      * put the storage of this matrix in order

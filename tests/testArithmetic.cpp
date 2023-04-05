@@ -5,7 +5,7 @@
 #include <fstream>
 
 using namespace SpmX;
-const uint MAX_ROWS = 2, MAX_COLS = 2, MAX_NNZ = 10;
+const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 300;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 void rand_fill_mat(Real mat[][MAX_COLS], uint m, uint n, uint nnz)
