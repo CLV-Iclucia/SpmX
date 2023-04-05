@@ -30,6 +30,14 @@ namespace SpmX
             void reOrder() const;
         public:
             DynamicSparseMatrix(uint _m, uint _n, uint _nnz) : m(_m), n(_n), nnz(_nnz) { }
+            DynamicSparseMatrix(DynamicSparseMatrix&& A) noexcept : m(A.m), n(A.n), nnz(A.nnz), outer(A.outer),
+                inner(A.inner), val(A.val), inOrder(A.inOrder) { }
+            DynamicSparseMatrix(const DynamicSparseMatrix& A) : m(A.m), n(A.n), inOrder(A.inOrder), nnz(A.nnz)
+            {
+                outer = static_cast<uint*>(malloc((m + 1) * sizeof(uint)));
+                inner = static_cast<uint*>(malloc(nnz * sizeof(uint)));
+                val = static_cast<Real*>(malloc(nnz * sizeof(Real)));
+            }
             friend std::ostream& operator<<(std::ostream& o, const DynamicSparseMatrix& spm);
             friend Vector operator*(const Vector& V, const DynamicSparseMatrix& spm);
             DynamicSparseMatrix() = default;
@@ -38,6 +46,38 @@ namespace SpmX
             uint cols() const { return n; }
             uint nonZeros() const { return nnz; }
             void setFromTriplets(Triplet *begin, Triplet *end, StoreType type = CSR);
+            DynamicSparseMatrix& operator=(const DynamicSparseMatrix& A)
+            {
+                if(&A == this) return *this;
+                else
+                {
+                    m = A.m;
+                    n = A.n;
+                    nnz = A.nnz;
+                    if(outer) outer = static_cast<uint*>(realloc(outer, (m + 1) * sizeof(uint)));
+                    else outer = static_cast<uint*>(malloc((m + 1) * sizeof(uint)));
+                    if(inner) inner = static_cast<uint*>(realloc(inner, nnz * sizeof(uint)));
+                    else inner = static_cast<uint*>(malloc(nnz * sizeof(uint)));
+                    if(val) val = static_cast<Real*>(realloc(val, nnz * sizeof(Real)));
+                    else val = static_cast<Real*>(malloc(nnz * sizeof(Real)));
+                    inOrder = A.inOrder;
+                    return *this;
+                }
+            }
+            DynamicSparseMatrix& operator=(DynamicSparseMatrix&& A) noexcept
+            {
+                delete[] outer;
+                delete[] inner;
+                delete[] val;
+                m = A.m;
+                n = A.n;
+                nnz = A.nnz;
+                inOrder = A.inOrder;
+                outer = A.outer;
+                inner = A.inner;
+                val = A.val;
+                return *this;
+            }
             DynamicSparseMatrix operator+(const DynamicSparseMatrix& A) const;
             DynamicSparseMatrix operator*(const DynamicSparseMatrix& A) const;
             DynamicSparseMatrix operator-(const DynamicSparseMatrix& A) const;
