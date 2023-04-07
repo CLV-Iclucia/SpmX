@@ -125,13 +125,13 @@ namespace SpmX
         DynamicSparseMatrix ret(m, n);
         ret.outer = static_cast<uint*>(malloc(sizeof(uint) * (m + 1)));
         ret.inner = static_cast<uint*>(malloc(sizeof(uint) * (nnz + A.nnz)));
-        ret.val = static_cast<Real*>(malloc(sizeof(uint) * (nnz + A.nnz)));
+        ret.val = static_cast<Real*>(malloc(sizeof(Real) * (nnz + A.nnz)));
+        uint j = 0, k = 0;
         for(uint i = 0; i < m; i++)
         {
-            uint j, k;
             // the following algo merges the two ordered inner indices in linear time without additional space
             ret.outer[i] = ret.nnz;
-            for(j = outer[i], k = A.outer[i]; j < outer[i + 1] && k < A.outer[i + 1];)
+            while(j < outer[i + 1] && k < A.outer[i + 1])
             {
                 uint inner_idx = inner[j], inner_idx_A = A.inner[k];
                 if(inner_idx < inner_idx_A)
@@ -141,11 +141,16 @@ namespace SpmX
                 }
                 else if(inner_idx == inner_idx_A)
                 {
-                    ret.inner[ret.nnz] = inner_idx;
-                    ret.val[ret.nnz] = 0.0;
-                    while(j < outer[i + 1] && k < A.outer[i + 1] && inner[j] == A.inner[k])
-                        ret.val[ret.nnz] += val[j++] + A.val[k++];
-                    ret.nnz++;
+                    Real sum = 0.0;
+                    while(j < outer[i + 1] && inner[j] == inner_idx)
+                        sum += val[j++];
+                    while(k < A.outer[i + 1] && A.inner[k] == inner_idx_A)
+                        sum += A.val[k++];
+                    if(!isZero(sum))
+                    {
+                        ret.inner[ret.nnz] = inner_idx;
+                        ret.val[ret.nnz++] = sum;
+                    }
                 }
                 else
                 {
@@ -199,7 +204,7 @@ namespace SpmX
         {
             for(uint j = outer[i]; j < outer[i + 1]; j++)
             {
-                uint idx = inner[j] ? ret.outer[inner[j] - 1] + bucket[inner[j]] : bucket[inner[j]];
+                uint idx = ret.outer[inner[j]] + bucket[inner[j]];
                 ret.inner[idx] = i;
                 ret.val[idx] = val[j];
                 bucket[inner[j]]++;
@@ -351,23 +356,22 @@ namespace SpmX
         memcpy(tmp_v, val, sizeof(Real) * nnz);
         outer = static_cast<uint*>(realloc(outer, (n + 1) * sizeof(uint)));
         uint *bucket = static_cast<uint*>(malloc(n * sizeof(uint)));
-        memset(outer, 0, sizeof(uint) * n);
+        memset(outer, 0, sizeof(uint) * (n + 1));
         memset(bucket, 0, sizeof(uint) * n);
-        for(int i = 0; i < nnz; i++) outer[tmp_b[i]]++;
-        for(int i = 1; i < n; i++)
+        for(int i = 0; i < nnz; i++) outer[tmp_b[i] + 1]++;
+        for(int i = 1; i <= n; i++)
             outer[i] += outer[i - 1];
-        outer[n] = nnz;
         for(int i = 0; i < m; i++)
         {
             for(uint j = tmp_a[i]; j < tmp_a[i + 1]; j++)
             {
-                uint idx = tmp_b[j] ? outer[tmp_b[j] - 1] + bucket[tmp_b[j]] : bucket[tmp_b[j]];
+                uint idx = outer[tmp_b[j]] + bucket[tmp_b[j]];
                 inner[idx] = i;
                 val[idx] = tmp_v[j];
                 bucket[tmp_b[j]]++;
             }
         }
-        outer[n] = nnz;
+        std::swap(m, n);
         free(tmp_a);
         free(tmp_b);
         free(tmp_v);

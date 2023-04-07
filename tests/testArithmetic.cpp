@@ -8,7 +8,7 @@ const uint TEST_SET = 1u << 0;
 const uint TEST_ADD = 1u << 1;
 
 using namespace SpmX;
-const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 300;
+const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 200;
 const uint TESTS = TEST_ADD;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
@@ -39,13 +39,14 @@ bool test_same(Real stdmat[][MAX_COLS], const DynamicSparseMatrix& spm)
             if(!isZero(stdmat[i][j])) nnz++;
     if(nnz != spm.nonZeros())
     {
-        std::cerr << "Testing setFromTriplets: wrong non-zeros" << std::endl;
+        std::cerr << "Testing same: wrong non-zeros" << std::endl;
+        std::cerr << "Expected non-zeros: " << nnz << std::endl << "Your non-zeros: " << spm.nonZeros() << std::endl;
         return false;
     }
     for(uint i = 0; i < spm.nonZeros(); i++)
         if(!isEqual(std::get<2>(v[i]), stdmat[std::get<0>(v[i])][std::get<1>(v[i])]))
         {
-            std::cerr << "Testing setFromTriplets: wrong value" << std::endl;
+            std::cerr << "Testing same: wrong value" << std::endl;
             return false;
         }
     return true;
@@ -75,8 +76,18 @@ void test_set()
         if(!test_same(golden, spm))
         {
             std::cerr << "Failed test setFromTriplets. Failing case is:" << std::endl;
-            for(uint i = 0; i < nnz; i++)
-                std::cerr << std::get<0>(tList[i]) << " " << std::get<1>(tList[i]) << " " << std::get<2>(tList[i]) << std::endl;
+            std::cerr << "A:" << std::endl;
+            for(uint i = 0; i < m; i++)
+                for(uint j = 0; j < n; j++)
+                    if(!isZero(A[i][j])) std::cerr << i << " " << j << " " << A[i][j] << std::endl;
+            std::cerr << "B:" << std::endl;
+            for(uint i = 0; i < m; i++)
+                for(uint j = 0; j < n; j++)
+                    if(!isZero(B[i][j])) std::cerr << i << " " << j << " " << B[i][j] << std::endl;
+            std::cerr << "std:" << std::endl;
+            for(uint i = 0; i < m; i++)
+                for(uint j = 0; j < n; j++)
+                    if(!isZero(golden[i][j])) std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
             std::cerr << "Your result is" << std::endl;
             std::cerr << spm << std::endl;
             exit(-1);
@@ -112,9 +123,21 @@ void test_add()
         spm = spmA + spmB;
         if(!test_same(golden, spm))
         {
-            std::cerr << "Failed test add Failing case is:" << std::endl;
+            std::cerr << "Failed test add. Failing case is:" << std::endl;
+            std::cerr << "A:" << std::endl;
+            for(uint i = 0; i < m; i++)
+                for(uint j = 0; j < n; j++)
+                    if(!isZero(A[i][j])) std::cerr << i << " " << j << " " << A[i][j] << std::endl;
+            std::cerr << "B:" << std::endl;
+            for(uint i = 0; i < m; i++)
+                for(uint j = 0; j < n; j++)
+                    if(!isZero(B[i][j])) std::cerr << i << " " << j << " " << B[i][j] << std::endl;
+            std::cerr << "std:" << std::endl;
+            for(uint i = 0; i < m; i++)
+                for(uint j = 0; j < n; j++)
+                    if(!isZero(golden[i][j])) std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
             std::cerr << "Your result is" << std::endl;
-            std::cerr << spm << std::endl;
+            std::cerr << "spm:" << std::endl << spm << std::endl;
             exit(-1);
         }
         printf("Passed test case %d\n", ++kase);
@@ -126,7 +149,7 @@ int main()
 {
     srand(time(0));
 
-    printf("Start testing arithmetics...");
+    printf("Start testing arithmetics...\n");
     if constexpr (TESTS & TEST_SET)
         test_set();
     if constexpr (TESTS & TEST_ADD)

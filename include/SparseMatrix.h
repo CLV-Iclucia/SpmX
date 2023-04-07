@@ -31,7 +31,11 @@ namespace SpmX
         public:
             DynamicSparseMatrix(uint _m, uint _n, uint _nnz) : m(_m), n(_n), nnz(_nnz) { }
             DynamicSparseMatrix(DynamicSparseMatrix&& A) noexcept : m(A.m), n(A.n), nnz(A.nnz), outer(A.outer),
-                inner(A.inner), val(A.val), inOrder(A.inOrder) { }
+                inner(A.inner), val(A.val), inOrder(A.inOrder)
+                {
+                    A.outer = A.inner = nullptr;
+                    A.val = nullptr;
+                }
             DynamicSparseMatrix(const DynamicSparseMatrix& A) : m(A.m), n(A.n), inOrder(A.inOrder), nnz(A.nnz)
             {
                 outer = static_cast<uint*>(malloc((m + 1) * sizeof(uint)));
@@ -66,16 +70,16 @@ namespace SpmX
             }
             DynamicSparseMatrix& operator=(DynamicSparseMatrix&& A) noexcept
             {
-                delete[] outer;
-                delete[] inner;
-                delete[] val;
                 m = A.m;
                 n = A.n;
                 nnz = A.nnz;
                 inOrder = A.inOrder;
                 outer = A.outer;
+                A.outer = nullptr;
                 inner = A.inner;
+                A.inner = nullptr;
                 val = A.val;
+                A.val = nullptr;
                 return *this;
             }
             DynamicSparseMatrix operator+(const DynamicSparseMatrix& A) const;
