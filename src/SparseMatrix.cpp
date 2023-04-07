@@ -263,12 +263,12 @@ namespace SpmX
         ret.outer = static_cast<uint*>(malloc(sizeof(uint) * (m + 1)));
         ret.inner = static_cast<uint*>(malloc(sizeof(uint) * (nnz + A.nnz)));
         ret.val = static_cast<Real*>(malloc(sizeof(Real) * (nnz + A.nnz)));
-        // a rough estimate of the number of non-zeros
+        uint j = 0, k = 0;
         for(uint i = 0; i < m; i++)
         {
-            uint j, k;
+            // the following algo merges the two ordered inner indices in linear time without additional space
             ret.outer[i] = ret.nnz;
-            for(j = outer[i], k = A.outer[i]; j < outer[i + 1] && k < A.outer[i + 1];)
+            while(j < outer[i + 1] && k < A.outer[i + 1])
             {
                 uint inner_idx = inner[j], inner_idx_A = A.inner[k];
                 if(inner_idx < inner_idx_A)
@@ -278,11 +278,16 @@ namespace SpmX
                 }
                 else if(inner_idx == inner_idx_A)
                 {
-                    ret.inner[ret.nnz] = inner_idx;
-                    ret.val[ret.nnz] = 0.0;
-                    while(j < outer[i + 1] && k < A.outer[i + 1] && inner[j] == A.inner[k])
-                        ret.val[ret.nnz] += val[j++] - A.val[k++];
-                    ret.nnz++;
+                    Real sum = 0.0;
+                    while(j < outer[i + 1] && inner[j] == inner_idx)
+                        sum += val[j++];
+                    while(k < A.outer[i + 1] && A.inner[k] == inner_idx_A)
+                        sum -= A.val[k++];
+                    if(!isZero(sum))
+                    {
+                        ret.inner[ret.nnz] = inner_idx;
+                        ret.val[ret.nnz++] = sum;
+                    }
                 }
                 else
                 {
@@ -309,8 +314,6 @@ namespace SpmX
         }
         ret.outer[m] = ret.nnz;
         ret.inOrder = true;
-        //if(isAutoEliminateZerosEnabled())
-           // ret.eliminateZeros();
         return ret;
     }
 
