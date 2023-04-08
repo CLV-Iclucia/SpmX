@@ -114,6 +114,7 @@ namespace SpmX
                 }
             }
         }
+        if(!inOrder) reOrder();
     }
 
     DynamicSparseMatrix DynamicSparseMatrix::operator+(const DynamicSparseMatrix &A) const

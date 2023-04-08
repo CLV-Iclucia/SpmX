@@ -22,14 +22,16 @@ namespace SpmX
             bool isRow() const { return type == Row; }
             bool isCol() const { return type == Col; }
             Vector() = default;
+            Vector(Real vec[], uint _dim) : n(_dim) { memcpy(a, vec, sizeof(Real) * _dim); }
             Vector(const Vector& v) : type(v.type), n(v.n)
             {
-                a = (Real*)malloc(n * sizeof(Real));
+                a = static_cast<Real*>(malloc(n * sizeof(Real)));
                 memcpy(a, v.a, n * sizeof(Real));
             }
+            Vector(Vector&& v) noexcept : n(v.n), a(v.a) { v.a = nullptr; }
             explicit Vector(uint _n) : n(_n)
             {
-                a = (Real*)malloc(n * sizeof(Real));
+                a = static_cast<Real*>(malloc(n * sizeof(Real)));
                 memset(a, 0, sizeof(Real) * n);
             }
             Real operator[](uint idx) const
