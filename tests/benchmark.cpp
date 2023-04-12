@@ -37,7 +37,7 @@ void test_set()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(m, n, nnz);
-        DynamicSparseMatrix spm;
+        SparseMatrix spm;
         spm.resize(m, n);
         spm.setFromTriplets(tList, tList + nnz);
         kase++;
@@ -55,7 +55,7 @@ void test_add()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(m, n, nnz);
-        DynamicSparseMatrix spmA, spmB, spm;
+        SparseMatrix spmA, spmB, spm;
         spmA.resize(m, n);
         spmA.setFromTriplets(tList, tList + nnz);
         nnz = rand() % MAX_NNZ + 1;
@@ -84,7 +84,7 @@ void test_sub()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(m, n, nnz);
-        DynamicSparseMatrix spmA, spmB, spm;
+        SparseMatrix spmA, spmB, spm;
         spmA.resize(m, n);
         spmA.setFromTriplets(tList, tList + nnz);
         nnz = rand() % MAX_NNZ + 1;
@@ -107,7 +107,7 @@ void test_mv_mul()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(m, n, nnz);
-        DynamicSparseMatrix spm;
+        SparseMatrix spm;
         Vector calc_v(n);
         spm.resize(m, n);
         spm.setFromTriplets(tList, tList + nnz);

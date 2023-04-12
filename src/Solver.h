@@ -17,7 +17,7 @@ namespace SpmX
             SolverStatus status = Undefined;
         public:
             SolverStatus info() const { return status; }
-            void compute(const DynamicSparseMatrix& A) { static_cast<Derived*>(this)->compute(A); };
+            void compute(const SparseMatrix& A) { static_cast<Derived*>(this)->compute(A); };
             Vector solve(const Vector& b) const { static_cast<Derived*>(this)->solve(b); };
     };
 

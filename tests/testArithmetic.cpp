@@ -30,7 +30,7 @@ void rand_fill_mat(Real mat[][MAX_COLS], uint m, uint n, uint nnz)
     }
 }
 
-bool test_same(Real stdmat[][MAX_COLS], const DynamicSparseMatrix& spm)
+bool test_same(Real stdmat[][MAX_COLS], const SparseMatrix<Dynamic>& spm)
 {
     static std::vector<Triplet> v;
     v.clear();
@@ -86,7 +86,7 @@ void test_set()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(golden, m, n, nnz);
-        DynamicSparseMatrix spm;
+        SparseMatrix<Dynamic> spm;
         spm.resize(m, n);
         spm.setFromTriplets(tList, tList + nnz);
         if(!test_same(golden, spm))
@@ -126,7 +126,7 @@ void test_add()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(A, m, n, nnz);
-        DynamicSparseMatrix spmA, spmB, spm;
+        SparseMatrix<Dynamic> spmA, spmB, spm;
         spmA.resize(m, n);
         spmA.setFromTriplets(tList, tList + nnz);
         nnz = rand() % MAX_NNZ + 1;
@@ -174,7 +174,7 @@ void test_sub()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(A, m, n, nnz);
-        DynamicSparseMatrix spmA, spmB, spm;
+        SparseMatrix<Dynamic> spmA, spmB, spm;
         spmA.resize(m, n);
         spmA.setFromTriplets(tList, tList + nnz);
         nnz = rand() % MAX_NNZ + 1;
@@ -222,7 +222,7 @@ void test_mv_mul()
         uint n = rand() % MAX_COLS + 1;
         uint nnz = rand() % MAX_NNZ + 1;
         rand_fill_mat(A, m, n, nnz);
-        DynamicSparseMatrix spm;
+        SparseMatrix<Dynamic> spm;
         Vector calc_v(n);
         spm.resize(m, n);
         spm.setFromTriplets(tList, tList + nnz);
