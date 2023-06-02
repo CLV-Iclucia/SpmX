@@ -1,0 +1,29 @@
+/usr/bin/cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/home/creeper/.local/share/JetBrains/Toolbox/apps/CLion/ch-0/231.9011.31/bin/ninja/linux/x64/ninja -G Ninja -S /home/creeper/CLionProjects/SpmX -B /home/creeper/CLionProjects/SpmX/cmake-build-release
+-- OpenMP found!
+-- 16 CPU logical cores detected.
+-- 8 CPU physical cores detected.
+CMake Warning at CMakeLists.txt:24 (find_package):
+  By not providing "FindGoogleBenchmark.cmake" in CMAKE_MODULE_PATH this
+  project has asked CMake to find a package configuration file provided by
+  "GoogleBenchmark", but CMake did not find one.
+
+  Could not find a package configuration file provided by "GoogleBenchmark"
+  with any of the following names:
+
+    GoogleBenchmarkConfig.cmake
+    googlebenchmark-config.cmake
+
+  Add the installation prefix of "GoogleBenchmark" to CMAKE_PREFIX_PATH or
+  set "GoogleBenchmark_DIR" to a directory containing one of the above files.
+  If "GoogleBenchmark" provides a separate development package or SDK, be
+  sure it has been installed.
+
+
+CMake Warning at CMakeLists.txt:29 (message):
+  Google Benchmark not found.  Disable benchmarking.
+
+
+-- SSE2 is supported by host system. SIMD enabled.
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/creeper/CLionProjects/SpmX/cmake-build-release

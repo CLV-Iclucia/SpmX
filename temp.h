@@ -213,33 +213,33 @@
 //  }
 //  SparseMatrix operator*(const SparseMatrix &A) const {
 //    assert(n == A.m);
-//    SparseMatrix ret(m, A.n);
-//    uint est_nnz = 0;
-//    // estimate the number of non-zero elements of the result
-//    for (uint i = 0; i < m; i++) {
-//      for (uint j = outer[i]; j < outer[i + 1]; j++) {
-//        uint idx = inner[j];
-//        for (uint k = A.outer[idx]; k < A.outer[idx + 1]; k++)
-//          if (A.inner[k] == j)
-//            est_nnz++;
-//      }
-//    }
-//    ret.outer = static_cast<uint *>(malloc(sizeof(uint) * (ret.m + 1)));
-//    ret.inner = static_cast<uint *>(malloc(sizeof(uint) * est_nnz));
-//    ret.val = static_cast<Real *>(malloc(sizeof(Real) * est_nnz));
-//    for (uint i = 0; i < m; i++) {
-//      A.outer[i] = ret.nnz;
-//      for (uint j = outer[i]; j < outer[i + 1]; j++) {
-//        uint idx = inner[j];
-//        for (uint k = A.outer[idx]; k < A.outer[idx + 1]; k++) {
-//          if (A.inner[k] == j) {
-//            ret.inner[ret.nnz] = j;
-//            ret.val[ret.nnz] += val[j] * A.val[k];
-//          }
-//        }
-//      }
-//    }
-//    return ret;
+    SparseMatrix ret(m, A.n);
+    uint est_nnz = 0;
+    // estimate the number of non-zero elements of the result
+    for (uint i = 0; i < m; i++) {
+      for (uint j = outer[i]; j < outer[i + 1]; j++) {
+        uint idx = inner[j];
+        for (uint k = A.outer[idx]; k < A.outer[idx + 1]; k++)
+          if (A.inner[k] == j)
+            est_nnz++;
+      }
+    }
+    ret.outer = static_cast<uint *>(malloc(sizeof(uint) * (ret.m + 1)));
+    ret.inner = static_cast<uint *>(malloc(sizeof(uint) * est_nnz));
+    ret.val = static_cast<Real *>(malloc(sizeof(Real) * est_nnz));
+    for (uint i = 0; i < m; i++) {
+      A.outer[i] = ret.nnz;
+      for (uint j = outer[i]; j < outer[i + 1]; j++) {
+        uint idx = inner[j];
+        for (uint k = A.outer[idx]; k < A.outer[idx + 1]; k++) {
+          if (A.inner[k] == j) {
+            ret.inner[ret.nnz] = j;
+            ret.val[ret.nnz] += val[j] * A.val[k];
+          }
+        }
+      }
+    }
+    return ret;
 //  }
 //  template <bool Any> SparseMatrix operator-(const SparseMatrix<Any> &A) const {
 //    assert(m == A.m && n == A.n);
@@ -393,58 +393,58 @@
 //   * @param begin the beginning address of the sequence, closed
 //   * @param end the end address of the sequence, opened
 //   */
-//  void setFromTriplets(Triplet *begin, Triplet *end, StoreType type = CSR) {
-//    assert(end >= begin);
-//    storeType = type;
-//    if (inner)
-//      inner = static_cast<uint *>(realloc(inner, (end - begin) * sizeof(uint)));
-//    else
-//      inner = static_cast<uint *>(malloc((end - begin) * sizeof(uint)));
-//    if (val)
-//      val = static_cast<Real *>(realloc(val, (end - begin) * sizeof(Real)));
-//    else
-//      val = static_cast<Real *>(malloc((end - begin) * sizeof(Real)));
-//    nnz = 0;
-//    inOrder = true;
-//    if (type == CSR) {
-//      if (outer)
-//        outer = static_cast<uint *>(realloc(outer, (m + 1) * sizeof(uint)));
-//      else
-//        outer = static_cast<uint *>(malloc((m + 1) * sizeof(uint)));
-//      auto list = new List<std::tuple<uint, Real>>[m];
-//      for (Triplet *p = begin; p < end; p++) {
-//        if (simZero(std::get<2>(*p)))
-//          continue;
-//        list[std::get<0>(*p)].push_back({std::get<1>(*p), std::get<2>(*p)});
-//      }
-//      outer[0] = 0;
-//      for (uint i = 0; i < m; i++) {
-//        if (list[i].empty()) {
-//          outer[i + 1] = outer[i];
-//          continue;
-//        }
-//        outer[i + 1] = outer[i] + list[i].size();
-//        for (std::tuple<uint, Real> tp : list[i]) {
-//          inner[nnz] = std::get<0>(tp);
-//          val[nnz++] = std::get<1>(tp);
-//        }
-//      }
-//      for (uint i = 0; i <= m; i++)
-//        assert(outer[i] >= 0 && outer[i] <= nnz);
-//      delete[] list;
-//    }
-//    refineStorage();
-//    for (uint i = 0; i < m; i++) {
-//      for (uint j = outer[i] + 1; j < outer[i + 1]; j++) {
-//        if (inOrder && inner[j] < inner[j - 1]) {
-//          inOrder = false;
-//          break;
-//        }
-//      }
-//    }
-//    if (!inOrder)
-//      reOrder();
-//  }
+  void setFromTriplets(Triplet *begin, Triplet *end, StoreType type = CSR) {
+    assert(end >= begin);
+    storeType = type;
+    if (inner)
+      inner = static_cast<uint *>(realloc(inner, (end - begin) * sizeof(uint)));
+    else
+      inner = static_cast<uint *>(malloc((end - begin) * sizeof(uint)));
+    if (val)
+      val = static_cast<Real *>(realloc(val, (end - begin) * sizeof(Real)));
+    else
+      val = static_cast<Real *>(malloc((end - begin) * sizeof(Real)));
+    nnz = 0;
+    inOrder = true;
+    if (type == CSR) {
+      if (outer)
+        outer = static_cast<uint *>(realloc(outer, (m + 1) * sizeof(uint)));
+      else
+        outer = static_cast<uint *>(malloc((m + 1) * sizeof(uint)));
+      auto list = new List<std::tuple<uint, Real>>[m];
+      for (Triplet *p = begin; p < end; p++) {
+        if (simZero(std::get<2>(*p)))
+          continue;
+        list[std::get<0>(*p)].push_back({std::get<1>(*p), std::get<2>(*p)});
+      }
+      outer[0] = 0;
+      for (uint i = 0; i < m; i++) {
+        if (list[i].empty()) {
+          outer[i + 1] = outer[i];
+          continue;
+        }
+        outer[i + 1] = outer[i] + list[i].size();
+        for (std::tuple<uint, Real> tp : list[i]) {
+          inner[nnz] = std::get<0>(tp);
+          val[nnz++] = std::get<1>(tp);
+        }
+      }
+      for (uint i = 0; i <= m; i++)
+        assert(outer[i] >= 0 && outer[i] <= nnz);
+      delete[] list;
+    }
+    refineStorage();
+    for (uint i = 0; i < m; i++) {
+      for (uint j = outer[i] + 1; j < outer[i + 1]; j++) {
+        if (inOrder && inner[j] < inner[j - 1]) {
+          inOrder = false;
+          break;
+        }
+      }
+    }
+    if (!inOrder)
+      reOrder();
+  }
 //  template <bool Any> SparseMatrix &operator=(const SparseMatrix<Any> &A) {
 //    if constexpr (Any == Dynamic) {
 //      if (&A == this)
@@ -561,23 +561,23 @@
 //    ret.nnz = nnz;
 //    ret.storeType = CSR;
 //    ret.outer = static_cast<uint *>(malloc((n + 1) * sizeof(uint)));
-//    uint *bucket = static_cast<uint *>(malloc(n * sizeof(uint)));
-//    memset(ret.outer, 0, sizeof(uint) * (n + 1));
-//    memset(bucket, 0, sizeof(uint) * n);
-//    for (uint i = 0; i < nnz; i++)
-//      ret.outer[inner[i] + 1]++;
-//    for (uint i = 1; i <= n; i++)
-//      ret.outer[i] += ret.outer[i - 1];
-//    for (uint i = 0; i < m; i++) {
-//      for (uint j = outer[i]; j < outer[i + 1]; j++) {
-//        uint idx = ret.outer[inner[j]] + bucket[inner[j]];
-//        ret.inner[idx] = i;
-//        ret.val[idx] = val[j];
-//        bucket[inner[j]]++;
-//      }
-//    }
-//    free(bucket);
-//    return ret;
+    uint *bucket = static_cast<uint *>(malloc(n * sizeof(uint)));
+    memset(ret.outer, 0, sizeof(uint) * (n + 1));
+    memset(bucket, 0, sizeof(uint) * n);
+    for (uint i = 0; i < nnz; i++)
+      ret.outer[inner[i] + 1]++;
+    for (uint i = 1; i <= n; i++)
+      ret.outer[i] += ret.outer[i - 1];
+    for (uint i = 0; i < m; i++) {
+      for (uint j = outer[i]; j < outer[i + 1]; j++) {
+        uint idx = ret.outer[inner[j]] + bucket[inner[j]];
+        ret.inner[idx] = i;
+        ret.val[idx] = val[j];
+        bucket[inner[j]]++;
+      }
+    }
+    free(bucket);
+    return ret;
 //  }
 //  void resize(uint _m, uint _n) {
 //    m = _m;
@@ -842,4 +842,125 @@
 //  }
 //  return ret;
 //}
+
+
+    SumRet<Lhs, Vector<Dense> > &operator*(const Vector<Dense> &rhs) {
+      if constexpr (Major == RowMajor) {
+        Vector<Dense> ret(n_rows_);
+        for (uint i = 0; i < n_rows_; i++)
+        for (uint j = InnerIdx(i); j < InnerIdx(i + 1); j++)
+          ret(i) += Data(j) * rhs(InnerIdx(j));
+        return ret;
+      } else {
+        // TODO: Implement CSC mul
+      }
+    }
+
+    template <typename Rhs>
+    SumRet<Lhs, Rhs> &operator*(const Vector<Sparse> &rhs) {
+      if constexpr (Major == RowMajor) {
+        uint lptr = 0, rptr = 0, est_nnz = 0;
+        for (uint i = 0; i < n_rows_; i++) {
+        Real sum = 0.0;
+        while (lptr < nnz_ && rptr < rhs.NonZeros()) {
+          if (InnerIdx(lptr) < rhs.Idx(rptr))
+            lptr++;
+          else if (InnerIdx(lptr) > rhs.Idx(rptr))
+            rptr++;
+          else {
+            lptr++;
+            rptr++;
+            est_nnz++;
+            break;
+          }
+        }
+        }
+        uint ptr = 0;
+        Vector<Sparse> ret(Rows(), est_nnz);
+        for (uint i = 0; i < Rows(); i++) {
+        Real sum = 0.0;
+        lptr = InnerIdx(i);
+        rptr = 0;
+        while (lptr < InnerIdx(i + 1) && rptr < rhs.NonZeros()) {
+          if (InnerIdx(lptr) < rhs.Idx(rptr))
+            lptr++;
+          else if (InnerIdx(lptr) > rhs.Idx(rptr))
+            rptr++;
+          else {
+            sum += Data(lptr) * rhs.Data(rptr);
+            lptr++;
+            rptr++;
+          }
+        }
+        if (!IsZero(sum)) {
+          ret.Idx(ptr) = i;
+          ret.Data(ptr++) = sum;
+        }
+        }
+      } else {
+        // TODO: Implement CSC
+      }
+    }
+
+    template <StorageType VecStorage>
+    Vector<VecStorage> LinearCombine(Real alpha, Real beta,
+                                     const Vector<VecStorage> &rhs) const {
+      uint outer_dim;
+      if constexpr (Major == RowMajor)
+        outer_dim = n_rows_;
+      else
+        outer_dim = n_cols_;
+      if constexpr (VecStorage == Sparse) {
+        uint lptr = 0, rptr = 0, est_nnz = 0;
+        while (lptr < nnz_ && rptr < rhs.nnz_) {
+        if (InnerIdx(lptr) < rhs.InnerIdx(rptr))
+          lptr++;
+        else if (InnerIdx(lptr) > rhs.InnerIdx(rptr))
+          rptr++;
+        else {
+          lptr++;
+          rptr++;
+        }
+        est_nnz++;
+        }
+        est_nnz += nnz_ - lptr + rhs.nnz_ - rptr;
+        SparseMatrix<Major> ret(n_rows_, n_cols_, est_nnz);
+        lptr = rptr = 0;
+        uint ptr = 0;
+        ret.OuterIdx() = 0;
+        for (uint i = 0; i < outer_dim; i++) {
+        while (lptr < nnz_ && rptr < rhs.nnz_) {
+          if (InnerIdx(lptr) < rhs.InnerIdx(rptr)) {
+            ret.InnerIdx(ptr) = InnerIdx(lptr);
+            ret.Data(ptr) = alpha * Data(lptr);
+            lptr++;
+          } else if (InnerIdx(lptr) > rhs.InnerIdx(rptr)) {
+            ret.InnerIdx(ptr) = rhs.InnerIdx(rptr);
+            ret.Data(ptr) = beta * rhs.Data(rptr);
+            rptr++;
+          } else {
+            ret.InnerIdx(ptr) = rhs.InnerIdx(rptr);
+            ret.Data(ptr) = alpha * Data(lptr) + beta * rhs.Data(rptr);
+            lptr++;
+            rptr++;
+          }
+          ptr++;
+        }
+        while (lptr < nnz_) {
+          ret.InnerIdx(ptr) = InnerIdx(lptr);
+          ret.Data(ptr) = alpha * Data(lptr);
+          lptr++;
+          ptr++;
+        }
+        while (rptr < rhs.nnz_) {
+          ret.InnerIdx(ptr) = rhs.InnerIdx(rptr);
+          ret.Data(ptr) = beta * rhs.Data(rptr);
+          rptr++;
+          ptr++;
+        }
+        ret.OuterIdx() = ptr;
+        }
+        return ret;
+      }
+    }
 #endif // SPMX_TEMP_H

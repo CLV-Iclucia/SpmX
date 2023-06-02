@@ -10,15 +10,10 @@ using Real = double;
 using uint = unsigned int;
 using std::size_t;
 using Triplet = std::tuple<uint, uint, Real>;
-struct Pair {
-  int idx;
-  Real val;
-};
 static const double DOUBLE_EPS = 1e-14;
 static const float FLOAT_EPS = 1e-6;
-enum StorageType { Dynamic, Static };
-enum VectorStorage { Sparse, Dense };
-enum StorageMajoring { RowMajor, ColumnMajor };
+enum StorageType { Sparse, Dense };
+enum StorageMajor { RowMajor, ColMajor };
 enum SolverStatus {
   Undefined,
   Success,

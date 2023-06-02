@@ -76,6 +76,56 @@ public:
   bool empty() const { return sz == 0; }
   ~List() { clear(); }
 };
+
+template <typename T> class AvlTree {
+public:
+private:
+  class AvlNode {
+    T key_;
+    int bf_ = 0;
+    AvlNode(T key) : key_(key) {}
+    AvlNode *ch_[2] = {nullptr, nullptr};
+  };
+  AvlNode *rt_;
+  void Insert() {}
+  bool Find() {}
+};
+
+class BitSet {
+public:
+  using ull = unsigned long long;
+  explicit BitSet(uint size) : size_(size) {
+    bits_ = new ull[(size >> 6) + 1];
+    allocated_ = (size >> 6) + 1;
+  }
+  void Set(uint i) { bits_[i >> 6] |= (1ull << (i & sizeof(ull))); }
+  void Erase(uint i) { bits_[i >> 6] &= ~(1ull << (i & sizeof(ull))); }
+  bool operator()(uint i) const {
+    return bits_[i >> 6] & (1ll << (i & sizeof(ull)));
+  }
+  uint BitCnt() {
+    uint sum = 0;
+    for (uint i = 0; i < allocated_; i++) {
+      ull x = bits_[i];
+      while (x) {
+        x ^= (x & (-x));
+        sum++;
+      }
+    }
+    return sum;
+  }
+  void Clear() {
+    for (uint i = 0; i < allocated_; i++)
+      bits_[i] = 0ull;
+  }
+  ~BitSet() { delete[] bits_; }
+
+private:
+  unsigned long long *bits_ = nullptr;
+  uint size_ = 0;
+  uint allocated_ = 0;
+};
+
 } // namespace spmx
 
 #endif // SPMX_MY_STL_H

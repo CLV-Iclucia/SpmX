@@ -19,17 +19,12 @@
 #include <omp.h>
 #endif
 
-#include <my-tiny-blas.h>
 #include <sparse-storage.h>
 
 namespace spmx {
-template <VectorStorage Storage> class Vector;
+template <StorageType Storage, VectorType VecType> class Vector;
 
-template <> class Vector<Dense> {
-private:
-  unsigned int dim_ = 0;
-  Real *data_ = nullptr;
-
+template <VectorType VecType> class Vector<Dense, VecType> {
 public:
   void RandFill() {
     for (uint i = 0; i < dim_; i++)
@@ -93,44 +88,43 @@ public:
       data_[i] = val;
   }
 
-  template<VectorStorage StorageRHS>
-  Real dot(const Vector<StorageRHS> &A) const {
+  template <StorageType StorageRHS, VectorType RHSType>
+  Real dot(const Vector<StorageRHS, RHSType> &A) const {
     if constexpr (StorageRHS == Dense)
       return ds_dot(data_, A.data_, dim_);
     else if constexpr (StorageRHS == Sparse)
       return ds_sp_dot(data_, A.idx_, A.data_, dim_, A.nnz_);
   }
-  void resize(int n) {
+  void Resize(int n) {
     dim_ = n;
     delete[] data_;
     data_ = new Real[dim_];
   }
-  Real &operator[](int i) { return data_[i]; }
-  const Real &operator[](int i) const { return data_[i]; }
+  Real &operator[](uint i) { return data_[i]; }
+  Real operator[](uint i) const { return data_[i]; }
+  Real &operator()(uint i) { return data_[i]; }
+  Real operator()(uint i) const { return data_[i]; }
 
-  template<VectorStorage StorageRHS>
-  void saxpy(const Vector<StorageRHS> &A, Real k) {
+  template <StorageType StorageRHS, VectorType RHSType>
+  void Saxpy(const Vector<StorageRHS, RHSType> &A, Real k) {
     if constexpr (StorageRHS == Dense) {
       Vector vec(dim_);
       ds_saxpy(data_, A.data_, vec.data_, k, dim_);
-    }
-    else if constexpr (StorageRHS == Sparse) {
-
+    } else if constexpr (StorageRHS == Sparse) {
     }
   }
-  void scadd(const Vector &A, Real k) {
+  void ScaleAdd(const Vector &A, Real k) {
     int i = 0;
     // #pragma omp parallel for
     for (i = 0; i < dim_; i++)
       data_[i] = k * data_[i] + A.data_[i];
   }
-  template<VectorStorage StorageRHS>
-  Vector operator+(const Vector<StorageRHS> &A) const {
+  template <StorageType StorageRHS, VectorType RHSType>
+  Vector operator+(const Vector<StorageRHS, RHSType> &A) const {
     if constexpr (StorageRHS == Dense) {
       Vector vec(dim_);
       ds_add(data_, A.data_, vec.data_, dim_);
-    }
-    else if constexpr (StorageRHS == Sparse) {
+    } else if constexpr (StorageRHS == Sparse) {
       Vector vec(dim_);
       ds_sp_add(data_, A.idx_, A.data_, vec.data_, dim_, A.nnz_);
     }
@@ -227,8 +221,8 @@ public:
       data_[i] *= val;
     return *this;
   }
-  uint dim() const { return dim_; }
-  Real L2Norm() const {
+  uint Dim() const { return dim_; }
+  Real RobustL2Norm() const {
     assert(dim_ > 0);
     Real maxv = std::abs(data_[0]), sum = 0.0;
     for (uint i = 1; i < dim_; i++)
@@ -237,7 +231,7 @@ public:
       sum += (data_[i] / maxv) * (data_[i] / maxv);
     return std::sqrt(sum) * maxv;
   }
-  Real L2NormSqr() const {
+  Real RobustL2NormSqr() const {
     assert(dim_ > 0);
     Real maxv = std::abs(data_[0]), sum = 0.0;
     for (uint i = 1; i < dim_; i++)
@@ -245,6 +239,12 @@ public:
     for (uint i = 0; i < dim_; i++)
       sum += (data_[i] / maxv) * (data_[i] / maxv);
     return sum * maxv * maxv;
+  }
+  Real L2Norm() const {
+    return std::sqrt(dot(*this));
+  }
+  Real L2NormSqr() const {
+    return dot(*this);
   }
   Real L1Norm() const {
     assert(dim_ > 0);
@@ -264,20 +264,138 @@ public:
     return o;
   }
   ~Vector() { delete[] data_; }
+
+private:
+  unsigned int dim_ = 0;
+  Real *data_ = nullptr;
 };
-template <> class Vector<Sparse> {
+template <VectorType VecType> class Vector<Sparse, VecType> {
 private:
   unsigned int dim_ = 0;
   unsigned int nnz_ = 0;
-  SparseStorage<Dynamic> storage_;
+  SparseStorage storage_;
+  /**
+   * v <- alpha * v + beta * rhs
+   * @param alpha
+   * @param beta
+   */
+  template <StorageType VecStorage, VectorType RHSType>
+  void LinearUpdate(Real alpha, Real beta, const Vector<VecStorage, RHSType> &rhs) {
+    if constexpr (VecStorage == Sparse) {
+      uint lptr = 0, rptr = 0, est_nnz = 0;
+      while (lptr < nnz_ && rptr < rhs.nnz_) {
+        if (Idx(lptr) < rhs.Idx(rptr))
+          lptr++;
+        else if (Idx(lptr) > rhs.Idx(rptr))
+          rptr++;
+        else {
+          lptr++;
+          rptr++;
+        }
+        est_nnz++;
+      }
+      est_nnz += nnz_ - lptr + rhs.nnz_ - rptr;
+      SparseStorage new_storage(est_nnz);
+      lptr = rptr = 0;
+      uint ptr = 0;
+      while (lptr < nnz_ && rptr < rhs.nnz_) {
+        if (Idx(lptr) < rhs.Idx(rptr)) {
+          new_storage.InnerIdx(ptr) = Idx(lptr);
+          new_storage.Data(ptr) = alpha * Data(lptr);
+          lptr++;
+        } else if (Idx(lptr) > rhs.Idx(rptr)) {
+          new_storage.InnerIdx(ptr) = rhs.Idx(rptr);
+          new_storage.Data(ptr) = beta * rhs.Data(rptr);
+          rptr++;
+        } else {
+          new_storage.InnerIdx(ptr) = rhs.Idx(rptr);
+          new_storage.Data(ptr) = alpha * Data(lptr) + beta * rhs.Data(rptr);
+          lptr++;
+          rptr++;
+        }
+        ptr++;
+      }
+      while (lptr < nnz_) {
+        new_storage.InnerIdx(ptr) = Idx(lptr);
+        new_storage.Data(ptr) = alpha * Data(lptr);
+        lptr++;
+        ptr++;
+      }
+      while (rptr < rhs.nnz_) {
+        new_storage.InnerIdx(ptr) = rhs.Idx(rptr);
+        new_storage.Data(ptr) = beta * rhs.Data(rptr);
+        rptr++;
+        ptr++;
+      }
+      storage_ = std::move(new_storage);
+    } else {
+      // Implement sparse dense linear update
+    }
+  }
+  template <StorageType VecStorage, VectorType RHSType>
+  Vector<VecStorage, VecType> LinearCombine(Real alpha, Real beta,
+                                   const Vector<VecStorage, RHSType> &rhs) const {
+    if constexpr (VecStorage == Sparse) {
+      uint lptr = 0, rptr = 0, est_nnz = 0;
+      while (lptr < nnz_ && rptr < rhs.nnz_) {
+        if (Idx(lptr) < rhs.Idx(rptr))
+          lptr++;
+        else if (Idx(lptr) > rhs.Idx(rptr))
+          rptr++;
+        else {
+          lptr++;
+          rptr++;
+        }
+        est_nnz++;
+      }
+      est_nnz += nnz_ - lptr + rhs.nnz_ - rptr;
+      Vector<Sparse, VecType> ret(est_nnz);
+      lptr = rptr = 0;
+      uint ptr = 0;
+      while (lptr < nnz_ && rptr < rhs.nnz_) {
+        if (Idx(lptr) < rhs.Idx(rptr)) {
+          ret.Idx(ptr) = Idx(lptr);
+          ret.Data(ptr) = alpha * Data(lptr);
+          lptr++;
+        } else if (Idx(lptr) > rhs.Idx(rptr)) {
+          ret.Idx(ptr) = rhs.Idx(rptr);
+          ret.Data(ptr) = beta * rhs.Data(rptr);
+          rptr++;
+        } else {
+          ret.Idx(ptr) = rhs.Idx(rptr);
+          ret.Data(ptr) = alpha * Data(lptr) + beta * rhs.Data(rptr);
+          lptr++;
+          rptr++;
+        }
+        ptr++;
+      }
+      while (lptr < nnz_) {
+        ret.Idx(ptr) = Idx(lptr);
+        ret.Data(ptr) = alpha * Data(lptr);
+        lptr++;
+        ptr++;
+      }
+      while (rptr < rhs.nnz_) {
+        ret.Idx(ptr) = rhs.Idx(rptr);
+        ret.Data(ptr) = beta * rhs.Data(rptr);
+        rptr++;
+        ptr++;
+      }
+    } else {
+      // Implement sparse dense linear combination
+    }
+  }
 
 public:
   Vector() = default;
   explicit Vector(uint n) : dim_(n) {}
-  explicit Vector(uint n, uint nnz) : dim_(n), nnz_(nnz) {
-  }
-  Vector(const Vector<Sparse> &A) : dim_(A.dim_), nnz_(A.nnz_) {
-  }
+  explicit Vector(uint n, uint nnz) : dim_(n), nnz_(nnz) {}
+  template <VectorType RHSType>
+  Vector(const Vector<Sparse, RHSType> &A) : dim_(A.dim_), nnz_(A.nnz_) {}
+  uint Idx(uint i) const { return storage_.InnerIdx(i); }
+  uint &Idx(uint i) { return storage_.InnerIdx(i); }
+  Real Data(uint i) const { return storage_.Data(i); }
+  Real &Data(uint i) { return storage_.Data(i); }
   Vector(Vector &&A) noexcept {
     dim_ = A.dim_;
     storage_ = A.storage_;
@@ -296,231 +414,74 @@ public:
     storage_ = A.storage_;
     return *this;
   }
-  Real dot(const Vector &A) const {
-    assert(dim_ == A.dim_);
+  Real dot(const Vector &rhs) const {
+    assert(dim_ == rhs.dim_);
     Real sum = 0.0;
     uint lptr = 0, rptr = 0;
-    while (lptr < nnz_ && rptr < A.nnz_) {
-      if (data[lptr].idx < A.data[rptr].idx)
+    while (lptr < nnz_ && rptr < rhs.nnz_) {
+      if (Idx(lptr) < rhs.Idx(rptr))
         lptr++;
-      else if (data[lptr].idx > A.data[rptr].idx)
+      else if (Idx(lptr) > rhs.Idx(rptr))
         rptr++;
-      else
-        sum += data[lptr].val * A.data[rptr].val;
+      else {
+        sum += Data(lptr) * rhs.Data(rptr);
+        lptr++;
+        rptr++;
+      }
     }
     return sum;
   }
-  void saxpy(const Vector &B, Real k) {
-    assert(dim_ == B.dim_);
-    uint lptr = 0, rptr = 0;
-    uint _nnz = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        lptr++;
-      else if (data[lptr].idx > B.data[rptr].idx)
-        rptr++;
-      else {
-        lptr++;
-        rptr++;
-      }
-      _nnz++;
-    }
-    _nnz += nnz_ - lptr + B.nnz_ - rptr;
-    Pair *new_data = new Pair[_nnz];
-    lptr = rptr = 0;
-    uint ptr = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        new_data[ptr] = data[lptr++];
-      else if (data[lptr].idx > B.data[rptr].idx) {
-        new_data[ptr].idx = B.data[rptr].idx;
-        new_data[ptr].val = k * B.data[rptr].val;
-        rptr++;
-      } else {
-        new_data[ptr].idx = data[rptr].idx;
-        new_data[ptr].val = data[lptr].val + k * B.data[rptr].val;
-        lptr++;
-        rptr++;
-      }
-      ptr++;
-    }
-    while (lptr < nnz_)
-      new_data[ptr++] = data[lptr++];
-    while (rptr < B.nnz_) {
-      new_data[ptr].idx = B.data[rptr].idx;
-      new_data[ptr].val = k * B.data[rptr].val;
-      rptr++;
-      ptr++;
-    }
-    delete[] data;
-    data = new_data;
+  template <StorageType VecStorage, VectorType RHSType>
+  void Saxpy(const Vector<VecStorage, RHSType> &rhs, Real k) {
+    LinearUpdate(1, k, rhs);
   }
-  void scadd(const Vector &B, Real k) {
-    assert(dim_ == B.dim_);
-    uint lptr = 0, rptr = 0;
-    uint _nnz = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        lptr++;
-      else if (data[lptr].idx > B.data[rptr].idx)
-        rptr++;
-      else {
-        lptr++;
-        rptr++;
-      }
-      _nnz++;
-    }
-    _nnz += nnz_ - lptr + B.nnz_ - rptr;
-    Pair *new_data = new Pair[_nnz];
-    lptr = rptr = 0;
-    uint ptr = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx) {
-        new_data[ptr].idx = data[lptr].idx;
-        new_data[ptr].val = k * data[lptr++].val;
-      } else if (data[lptr].idx > B.data[rptr].idx)
-        new_data[ptr] = B.data[rptr++];
-      else {
-        new_data[ptr].idx = data[lptr].idx;
-        new_data[ptr].val = k * data[lptr].val + B.data[rptr].val;
-        lptr++;
-        rptr++;
-      }
-      ptr++;
-    }
-    while (lptr < nnz_) {
-      new_data[ptr].idx = data[lptr].idx;
-      new_data[ptr++].val = data[lptr++].val;
-    }
-    while (rptr < B.nnz_)
-      new_data[ptr++] = B.data[rptr++];
-    delete[] data;
-    data = new_data;
+  template <StorageType VecStorage, VectorType RHSType>
+  void ScaleAdd(const Vector<VecStorage, RHSType> &rhs, Real k) {
+    LinearUpdate(k, 1, rhs);
   }
-  Vector operator+(const Vector &B) const {
-    assert(dim_ == B.dim_);
-    uint lptr = 0, rptr = 0;
-    uint _nnz = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        lptr++;
-      else if (data[lptr].idx > B.data[rptr].idx)
-        rptr++;
-      else {
-        lptr++;
-        rptr++;
-      }
-      _nnz++;
-    }
-    _nnz += nnz_ - lptr + B.nnz_ - rptr;
-    Pair *new_data = new Pair[_nnz];
-    Vector ret(_nnz);
-    lptr = rptr = 0;
-    uint ptr = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        new_data[ptr] = data[lptr++];
-      else if (data[lptr].idx > B.data[rptr].idx)
-        new_data[ptr] = B.data[rptr++];
-      else {
-        new_data[ptr].idx = data[lptr].idx;
-        new_data[ptr].val = data[lptr].val + B.data[rptr].val;
-        lptr++;
-        rptr++;
-      }
-      ptr++;
-    }
-    while (lptr < nnz_) {
-      new_data[ptr].idx = data[lptr].idx;
-      new_data[ptr++].val = data[lptr++].val;
-    }
-    while (rptr < B.nnz_)
-      new_data[ptr++] = B.data[rptr++];
-    ret.data = new_data;
-    return ret;
+  template <StorageType VecStorage, VectorType RHSType>
+  Vector<VecStorage, VecType> operator+(const Vector<VecStorage, RHSType> &rhs) const {
+    return LinearCombine(1, 1, rhs);
   }
   Vector operator-() {
     Vector ret(*this);
     for (int i = 0; i < nnz_; i++)
-      ret.data[i].val = -ret.data[i].val;
+      ret.Data(i) = -ret.Data(i);
     return ret;
   }
-  Vector operator-(const Vector &B) const {
-    assert(dim_ == B.dim_);
-    uint lptr = 0, rptr = 0;
-    uint _nnz = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        lptr++;
-      else if (data[lptr].idx > B.data[rptr].idx)
-        rptr++;
-      else {
-        lptr++;
-        rptr++;
-      }
-      _nnz++;
-    }
-    _nnz += nnz_ - lptr + B.nnz_ - rptr;
-    Pair *new_data = new Pair[_nnz];
-    Vector ret(_nnz);
-    lptr = rptr = 0;
-    uint ptr = 0;
-    while (lptr < nnz_ && rptr < B.nnz_) {
-      if (data[lptr].idx < B.data[rptr].idx)
-        new_data[ptr] = data[lptr++];
-      else if (data[lptr].idx > B.data[rptr].idx) {
-        new_data[ptr].idx = B.data[rptr].idx;
-        new_data[ptr].val = -B.data[rptr++].val;
-        ptr++;
-      } else {
-        new_data[ptr].idx = data[lptr].idx;
-        new_data[ptr].val = data[lptr].val - B.data[rptr].val;
-        lptr++;
-        rptr++;
-      }
-      ptr++;
-    }
-    while (lptr < nnz_) {
-      new_data[ptr].idx = data[lptr].idx;
-      new_data[ptr++].val = data[lptr++].val;
-    }
-    while (rptr < B.nnz_) {
-      new_data[ptr].idx = B.data[rptr].idx;
-      new_data[ptr++].val = -B.data[rptr++].val;
-    }
-    ret.data = new_data;
-    return ret;
+  Vector operator-(const Vector &rhs) const {
+    return LinearCombine(1, -1, rhs);
   }
   Vector operator/(Real val) const {
     if (val == 0) {
       std::printf("Division by zero!");
       exit(-1);
     }
-    Vector V(dim_, nnz_);
+    Vector ret(dim_, nnz_);
     for (int i = 0; i < nnz_; i++)
-      V.data[i].val = data[i].val * val;
-    return V;
+      ret.Data(i) = Data(i) * val;
+    return ret;
   }
   Vector operator*(Real val) const {
-    Vector V(dim_, nnz_);
+    Vector ret(dim_, nnz_);
     for (int i = 0; i < nnz_; i++)
-      V.data[i].val = data[i].val * val;
-    return V;
+      ret.Data(i) * val;
+    return ret;
   }
   friend Vector operator*(Real val, const Vector &A) { return A * val; }
   Vector &inv() {
     for (int i = 0; i < nnz_; i++)
-      data[i].val = 1.0 / data[i].val;
+      Data(i) = 1.0 / Data(i);
     return *this;
   }
   Vector inv() const {
     Vector ret(*this);
     for (int i = 0; i < nnz_; i++)
-      ret.data[i].val = 1.0 / ret.data[i].val;
+      ret.Data(i) = 1.0 / Data(i);
     return ret;
   }
-  Vector &operator+=(const Vector &A) {
-    saxpy(A, 1.0);
+  Vector &operator+=(const Vector &rhs) {
+    LinearUpdate(1, 1, rhs);
     return *this;
   }
   Vector &operator/=(Real val) {
@@ -531,65 +492,78 @@ public:
     int i;
     // #pragma omp parallel for
     for (i = 0; i < nnz_; i++)
-      data[i].val /= val;
+      Data(i) /= val;
     return *this;
   }
-  Vector &operator-=(const Vector<Sparse> &A) {
-    saxpy(A, -1.0);
+  template<VectorType RHSType>
+  Vector &operator-=(const Vector<Sparse, RHSType> &rhs) {
+    LinearUpdate(1, -1, rhs);
     return *this;
   }
   Vector &operator*=(Real val) {
     for (int i = 0; i < nnz_; i++)
-      data[i].val *= val;
+      Data(i) *= val;
     return *this;
   }
-  uint dim() const { return dim_; }
-  uint nonZeros() const { return nnz_; }
-  Real L2Norm() const {
+  uint Dim() const { return dim_; }
+  uint NonZeros() const { return nnz_; }
+  Real RobustL2Norm() const {
     assert(dim_ > 0);
     if (!nnz_)
       return 0.0;
-    Real maxv = std::abs(data[0].val), sum = 0.0;
+    Real maxv = std::abs(Data(0)), sum = 0.0;
     for (uint i = 1; i < nnz_; i++)
-      maxv = std::max(std::abs(data[i].val), maxv);
+      maxv = std::max(std::abs(Data(i)), maxv);
     for (uint i = 0; i < nnz_; i++)
-      sum += (data[i].val / maxv) * (data[i].val / maxv);
+      sum += (Data(i) / maxv);
     return std::sqrt(sum) * maxv;
   }
   Real L2NormSqr() const {
+    return dot(*this);
+  }
+  Real L2Norm() const {
+    return std::sqrt(dot(*this));
+  }
+  Real RobustL2NormSqr() const {
     assert(dim_ > 0);
     if (!nnz_)
       return 0.0;
-    Real maxv = std::abs(data[0].val), sum = 0.0;
+    Real maxv = std::abs(Data(0)), sum = 0.0;
     for (uint i = 1; i < dim_; i++)
-      maxv = std::max(std::abs(data[i].val), maxv);
+      maxv = std::max(std::abs(Data(i)), maxv);
     for (uint i = 0; i < dim_; i++)
-      sum += (data[i].val / maxv) * (data[i].val / maxv);
+      sum += (Data(i) / maxv);
     return sum * maxv * maxv;
   }
   Real L1Norm() const {
     assert(dim_ > 0);
     Real sum = 0.0;
     for (uint i = 0; i < nnz_; i++)
-      sum += std::abs(data[i].val);
+      sum += std::abs(Data(i));
     return sum;
   }
-  Vector normalized() const {
+  Real MaxNorm() const {
+    Real maxv = 0.0;
+    for(uint i = 0; i < nnz_; i++)
+      maxv = std::max(maxv, std::abs(Data(i)));
+    return maxv;
+  }
+  Vector Normalized() const {
     Real norm = L2Norm();
     Vector ret(dim_);
     for (int i = 0; i < nnz_; i++)
-      data[i].val = data[i].val / norm;
+      Data(i) / norm;
     return ret;
   }
   friend std::ostream &operator<<(std::ostream &o, const Vector &A) {
     if (A.nnz_)
-      o << "(" << A.data[0].idx << ", " << A.data[0].val << ")";
+      o << "(" << A.Idx(0) << ", " << A.Data(0) << ")";
     for (int i = 1; i < A.nnz_; i++)
-      o << std::endl << "(" << A.data[0].idx << ", " << A.data[0].val << ")";
+      o << std::endl << "(" << A.Idx(i) << ", " << A.Data(i) << ")";
     return o;
   }
-  ~Vector() { delete[] data; }
 };
+
 } // namespace spmx
 
 #endif // SPMX_SPMX_VECTOR_H

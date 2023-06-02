@@ -4,7 +4,7 @@
 
 #ifndef SPMX_SPMX_UTILS_H
 #define SPMX_SPMX_UTILS_H
-#include "spmx-types.h"
+#include <spmx-types.h>
 #include <climits>
 #include <random>
 #include <type_traits>
