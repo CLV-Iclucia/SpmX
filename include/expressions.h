@@ -5,8 +5,7 @@
 #ifndef SPMX_EXPRESSIONS_H
 #define SPMX_EXPRESSIONS_H
 
-#include <sparse-matrix.h>
-#include <type-utils.h>
+#include <sparse-matrix-base.h>
 namespace spmx {
 
 /**
@@ -16,6 +15,7 @@ namespace spmx {
 template <typename Lhs, typename Rhs>
 class LinearExpr : public SparseMatrixBase<LinearExpr<Lhs, Rhs>> {
 public:
+
   using RetType = typename SumReturnType<Lhs, Rhs>::type;
   using Expr = typename LinearExpr<Lhs, Rhs>::type;
   using traits<RetType>::StorageType;
@@ -34,6 +34,7 @@ public:
       return ret;
     } else if (traits<Lhs>::StorageType == Dense &&
                traits<Rhs>::StorageType == Dense) {
+      // TODO: Obviously, this can be optimized
       RetType ret(lhs_.Rows(), lhs_.Cols());
       for (int i = 0; i < OuterDim(); i++)
         for (int j = 0; j < InnerDim(); j++)

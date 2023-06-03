@@ -18,5 +18,4 @@ private:
   std::condition_variable cond;
 };
 
-
 #endif // SPMX_CONCURRENCY_UTILS_H

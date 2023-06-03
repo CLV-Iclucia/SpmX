@@ -1,6 +1,5 @@
 #include <ctime>
 #include <fstream>
-#include <random>
 #include <sparse-matrix.h>
 #include <spmx-utils.h>
 
@@ -18,43 +17,43 @@ static Real golden[MAX_ROWS][MAX_COLS];
 
 static Real A[MAX_ROWS][MAX_COLS], B[MAX_ROWS][MAX_COLS];
 static Real v[MAX_COLS], golden_v[MAX_ROWS];
-void rand_fill_mat(Real mat[][MAX_COLS], uint m, uint n, uint nnz) {
+void RandFillMat(Real mat[][800], uint m, uint n, uint nnz) {
   for (int i = 0; i < nnz; i++) {
-    uint x = rand() % m;
-    uint y = rand() % n;
-    Real val = 1.0 * rand() / (rand() + 1.0);
+    uint x = Randu();
+    uint y = Randu();
+    Real val = Randu() * RandReal();
     tList[i] = {x, y, val};
     mat[x][y] += val;
   }
 }
 
-bool test_same(Real stdmat[][MAX_COLS], const SparseMatrix<Dynamic> &spm) {
+bool TestSame(Real stdmat[][800], const SparseMatrixXd &spm) {
   static std::vector<Triplet> v;
   v.clear();
   spm.toTriplets(v);
-  v.reserve(spm.nonZeros());
+  v.reserve(spm.NonZeroEst());
   uint nnz = 0;
-  for (uint i = 0; i < spm.rows(); i++)
-    for (uint j = 0; j < spm.cols(); j++)
-      if (!simZero(stdmat[i][j]))
+  for (uint i = 0; i < spm.Rows(); i++)
+    for (uint j = 0; j < spm.Cols(); j++)
+      if (!iszero(stdmat[i][j]))
         nnz++;
-  if (nnz != spm.nonZeros()) {
+  if (nnz != spm.NonZeroEst()) {
     std::cerr << "Testing same: wrong non-zeros" << std::endl;
     std::cerr << "Expected non-zeros: " << nnz << std::endl
-              << "Your non-zeros: " << spm.nonZeros() << std::endl;
+              << "Your non-zeros: " << spm.NonZeroEst() << std::endl;
     return false;
   }
-  for (uint i = 0; i < spm.nonZeros(); i++)
-    if (!sim(std::get<2>(v[i]), stdmat[std::get<0>(v[i])][std::get<1>(v[i])])) {
+  for (uint i = 0; i < spm.NonZeroEst(); i++)
+    if (!Similar(std::get<2>(v[i]), stdmat[std::get<0>(v[i])][std::get<1>(v[i])])) {
       std::cerr << "Testing same: wrong value" << std::endl;
       return false;
     }
   return true;
 }
 
-bool test_same(Real stdv[], const Vector &V) {
-  for (uint i = 0; i < V.dim(); i++) {
-    if (!sim(stdv[i], V[i])) {
+bool TestSame(Real stdv[], const Vector<Dense> &V) {
+  for (uint i = 0; i < V.Dim(); i++) {
+    if (!Similar(stdv[i], V[i])) {
       std::cerr << "Testing same: wrong value" << std::endl;
       return false;
     }
@@ -62,41 +61,41 @@ bool test_same(Real stdv[], const Vector &V) {
   return true;
 }
 
-void write_wrong_case(uint m, uint n, uint nnz) {
+void WriteWrongCase(uint m, uint n, uint nnz) {
   std::cerr << m << " " << n << " " << nnz << std::endl;
   for (uint i = 0; i < nnz; i++)
     std::cerr << std::get<0>(tList[i]) << " " << std::get<1>(tList[i]) << " "
               << std::get<2>(tList[i]) << std::endl;
 }
 
-void test_set() {
+void TestSet() {
   uint kase = 0;
   printf("Running tests on setFromTriplets...\n");
   while (kase < MAX_CASES) {
     memset(golden, 0, sizeof(golden));
-    uint m = rand() % MAX_ROWS + 1;
-    uint n = rand() % MAX_COLS + 1;
-    uint nnz = rand() % MAX_NNZ + 1;
-    rand_fill_mat(golden, m, n, nnz);
-    SparseMatrix<Dynamic> spm;
-    spm.resize(m, n);
-    spm.setFromTriplets(tList, tList + nnz);
-    if (!test_same(golden, spm)) {
+    uint m = Randu() % MAX_ROWS + 1;
+    uint n = Randu() % MAX_COLS + 1;
+    uint nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(golden, m, n, nnz);
+    SparseMatrixXd spm;
+    spm.Resize(m, n);
+    spm.SetFromTriplets(tList, tList + nnz);
+    if (!TestSame(golden, spm)) {
       std::cerr << "Failed test setFromTriplets. Failing case is:" << std::endl;
       std::cerr << "A:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(A[i][j]))
+          if (!iszero(A[i][j]))
             std::cerr << i << " " << j << " " << A[i][j] << std::endl;
       std::cerr << "B:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(B[i][j]))
+          if (!iszero(B[i][j]))
             std::cerr << i << " " << j << " " << B[i][j] << std::endl;
       std::cerr << "std:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(golden[i][j]))
+          if (!iszero(golden[i][j]))
             std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
       std::cerr << "Your result is" << std::endl;
       std::cerr << spm << std::endl;
@@ -114,37 +113,37 @@ void test_add() {
     memset(golden, 0, sizeof(golden));
     memset(A, 0, sizeof(A));
     memset(B, 0, sizeof(B));
-    uint m = rand() % MAX_ROWS + 1;
-    uint n = rand() % MAX_COLS + 1;
-    uint nnz = rand() % MAX_NNZ + 1;
-    rand_fill_mat(A, m, n, nnz);
-    SparseMatrix<Dynamic> spmA, spmB, spm;
-    spmA.resize(m, n);
-    spmA.setFromTriplets(tList, tList + nnz);
-    nnz = rand() % MAX_NNZ + 1;
-    rand_fill_mat(B, m, n, nnz);
+    uint m = Randu() % MAX_ROWS + 1;
+    uint n = Randu() % MAX_COLS + 1;
+    uint nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(A, m, n, nnz);
+    SparseMatrixXd spmA, spmB, spm;
+    spmA.Resize(m, n);
+    spmA.SetFromTriplets(tList, tList + nnz);
+    nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(B, m, n, nnz);
     for (uint i = 0; i < m; i++)
       for (uint j = 0; j < n; j++)
         golden[i][j] = A[i][j] + B[i][j];
-    spmB.resize(m, n);
-    spmB.setFromTriplets(tList, tList + nnz);
+    spmB.Resize(m, n);
+    spmB.SetFromTriplets(tList, tList + nnz);
     spm = spmA + spmB;
-    if (!test_same(golden, spm)) {
+    if (!TestSame(golden, spm)) {
       std::cerr << "Failed test add. Failing case is:" << std::endl;
       std::cerr << "A:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(A[i][j]))
+          if (!iszero(A[i][j]))
             std::cerr << i << " " << j << " " << A[i][j] << std::endl;
       std::cerr << "B:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(B[i][j]))
+          if (!iszero(B[i][j]))
             std::cerr << i << " " << j << " " << B[i][j] << std::endl;
       std::cerr << "std:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(golden[i][j]))
+          if (!iszero(golden[i][j]))
             std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
       std::cerr << "Your result is" << std::endl;
       std::cerr << "spm:" << std::endl << spm << std::endl;
@@ -162,37 +161,37 @@ void test_sub() {
     memset(golden, 0, sizeof(golden));
     memset(A, 0, sizeof(A));
     memset(B, 0, sizeof(B));
-    uint m = rand() % MAX_ROWS + 1;
-    uint n = rand() % MAX_COLS + 1;
-    uint nnz = rand() % MAX_NNZ + 1;
-    rand_fill_mat(A, m, n, nnz);
-    SparseMatrix<Dynamic> spmA, spmB, spm;
-    spmA.resize(m, n);
-    spmA.setFromTriplets(tList, tList + nnz);
-    nnz = rand() % MAX_NNZ + 1;
-    rand_fill_mat(B, m, n, nnz);
+    uint m = Randu() % MAX_ROWS + 1;
+    uint n = Randu() % MAX_COLS + 1;
+    uint nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(A, m, n, nnz);
+    SparseMatrixXd spmA, spmB, spm;
+    spmA.Resize(m, n);
+    spmA.SetFromTriplets(tList, tList + nnz);
+    nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(B, m, n, nnz);
     for (uint i = 0; i < m; i++)
       for (uint j = 0; j < n; j++)
         golden[i][j] = A[i][j] - B[i][j];
-    spmB.resize(m, n);
-    spmB.setFromTriplets(tList, tList + nnz);
+    spmB.Resize(m, n);
+    spmB.SetFromTriplets(tList, tList + nnz);
     spm = spmA - spmB;
-    if (!test_same(golden, spm)) {
+    if (!TestSame(golden, spm)) {
       std::cerr << "Failed test sub. Failing case is:" << std::endl;
       std::cerr << "A:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(A[i][j]))
+          if (!iszero(A[i][j]))
             std::cerr << i << " " << j << " " << A[i][j] << std::endl;
       std::cerr << "B:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(B[i][j]))
+          if (!iszero(B[i][j]))
             std::cerr << i << " " << j << " " << B[i][j] << std::endl;
       std::cerr << "std:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(golden[i][j]))
+          if (!iszero(golden[i][j]))
             std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
       std::cerr << "Your result is" << std::endl;
       std::cerr << "spm:" << std::endl << spm << std::endl;
@@ -210,33 +209,33 @@ void test_mv_mul() {
     memset(golden_v, 0, sizeof(golden_v));
     memset(A, 0, sizeof(A));
     memset(v, 0, sizeof(v));
-    uint m = rand() % MAX_ROWS + 1;
-    uint n = rand() % MAX_COLS + 1;
-    uint nnz = rand() % MAX_NNZ + 1;
-    rand_fill_mat(A, m, n, nnz);
-    SparseMatrix<Dynamic> spm;
+    uint m = Randu() % MAX_ROWS + 1;
+    uint n = Randu() % MAX_COLS + 1;
+    uint nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(A, m, n, nnz);
+    SparseMatrixXd spm;
     Vector calc_v(n);
-    spm.resize(m, n);
-    spm.setFromTriplets(tList, tList + nnz);
+    spm.Resize(m, n);
+    spm.SetFromTriplets(tList, tList + nnz);
     for (uint i = 0; i < n; i++) {
     }
-    if (!test_same(golden_v, calc_v)) {
+    if (!TestSame(golden_v, calc_v)) {
       std::cerr << "Failed test mat-vec-multiplication. Failing case is:"
                 << std::endl;
       std::cerr << "A:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(A[i][j]))
+          if (!iszero(A[i][j]))
             std::cerr << i << " " << j << " " << A[i][j] << std::endl;
       std::cerr << "B:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(B[i][j]))
+          if (!iszero(B[i][j]))
             std::cerr << i << " " << j << " " << B[i][j] << std::endl;
       std::cerr << "std:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
-          if (!simZero(golden[i][j]))
+          if (!iszero(golden[i][j]))
             std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
       std::cerr << "Your result is" << std::endl;
       std::cerr << "spm:" << std::endl << spm << std::endl;
@@ -247,12 +246,10 @@ void test_mv_mul() {
   printf("Passed all tests on mat-vec multiplication.\n");
 }
 
-int main() {
-  srand(time(0));
-
+int main(int argc, char **argv) {
   printf("Start testing arithmetics...\n");
   if constexpr (TESTS & TEST_SET)
-    test_set();
+    TestSet();
   if constexpr (TESTS & TEST_ADD)
     test_add();
   if constexpr (TESTS & TEST_SUB)

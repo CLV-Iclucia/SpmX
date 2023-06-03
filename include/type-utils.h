@@ -50,6 +50,23 @@ template <typename Lhs, typename Rhs> struct SumReturnType {
                    Lhs::major>;
 };
 
+template <typename Derived> class SparseMatrixBase;
+
+template <typename T> struct IsSparseMatrix {
+  static constexpr bool value = false;
+};
+
+template <typename Derived> struct IsSparseMatrix<SparseMatrixBase<Derived>> {
+  static constexpr bool value = false;
+};
+
+template <typename T>
+using is_spm_v = typename IsSparseMatrix<T>::value;
+
+template <typename T> struct GetDerived {};
+template <typename Derived> struct GetDerived<SparseMatrixBase<Derived>> {
+  using type = Derived;
+};
 } // namespace spmx
 
 // namespace spmx

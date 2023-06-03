@@ -35,10 +35,11 @@ template <typename Derived, bool LDLT>
 class SimplicialCholesky
     : SparseCholeskyBase<SimplicialCholesky<Derived, LDLT>> {
 private:
-  EliminationTree etree_;
-
+  EliminationTree* etree_ = nullptr;
 public:
-  SimplicialCholesky() = default;
+  SimplicialCholesky() {
+    etree_ = new EliminationTree;
+  }
   void AnalyseImpl(const SparseMatrixBase<Derived> &A) {
     if (!A.IsSquare()) {
       std::cerr
@@ -47,10 +48,14 @@ public:
       status_ = InvalidInput;
       return;
     }
-    etree_.BuildFromMatrix(A);
+    etree_->BuildFromMatrix(A);
   }
-  // TODO: Factorize pass
-  // TODO: Solve pass
+  void Factorize() {
+
+  }
+  ~SimplicialCholesky() {
+    delete etree_;
+  }
 private:
   using type = SimplicialCholesky<Derived, LDLT>;
   using Base = SparseCholeskyBase<type>;
