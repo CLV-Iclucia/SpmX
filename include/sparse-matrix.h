@@ -5,7 +5,6 @@
 #ifndef SPMX_SPARSE_MATRIX_H
 #define SPMX_SPARSE_MATRIX_H
 
-#include "my-stl.h"
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -18,7 +17,7 @@ namespace spmx {
 template <uint nRows, uint nCols, StorageType Storage, StorageMajor Major>
 class SparseMatrix;
 
-template <typename Lhs, typename Rhs> class LinearExpr;
+template <typename Lhs, typename Rhs> class AddExpr;
 
 template <StorageType Storage>
 using Vector = SparseMatrix<0, 1, Storage, ColMajor>;
@@ -38,13 +37,12 @@ using RowVector = SparseMatrix<1, 0, Storage, RowMajor>;
  * @note for outer indices it must be a sparse storage
  * @tparam Major whether use row Majoring or column Majoring
  */
-template <uint nRows, uint nCols, StorageType storage, StorageMajor Major>
+template <uint nRows, uint nCols, StorageType storageType, StorageMajor Major>
 class SparseMatrix
-    : public SparseMatrixBase<SparseMatrix<nRows, nCols, storage, Major>> {
+    : public SparseMatrixBase<SparseMatrix<nRows, nCols, storageType, Major>> {
 public:
-  using Base = SparseMatrixBase<SparseMatrix<nRows, nCols, storage, Major>>;
+  using Base = SparseMatrixBase<SparseMatrix<nRows, nCols, storageType, Major>>;
   using Base::toTriplets;
-  using Base::operator<<;
   using Base::operator+;
   using Base::operator-;
   SparseMatrix() = default;
@@ -53,7 +51,7 @@ public:
       n_rows_ = n_rows;
     if constexpr (!nCols)
       n_cols_ = n_cols;
-    if (storage == Sparse) {
+    if (storageType == Sparse) {
       if constexpr (Major == RowMajor)
         outer_idx_ = new uint[n_rows + 1];
       else if constexpr (Major == ColMajor)
@@ -70,7 +68,9 @@ public:
    * @param end
    */
   template <typename Iterator>
-  void SetFromTriplets(Iterator begin, Iterator end) {}
+  void SetFromTriplets(Iterator begin, Iterator end) {
+
+  }
   template <typename OtherDerived>
   explicit SparseMatrix(const SparseMatrixBase<OtherDerived> &spm) {
     if constexpr (Major == traits<OtherDerived>::StorageMajor) {
@@ -112,9 +112,7 @@ public:
       return nCols;
   }
   template <typename OtherDerived>
-  SparseMatrix &operator=(const SparseMatrixBase<OtherDerived> &other) {
-    if (&other == this)
-      return *this;
+  SparseMatrix &operator=(const OtherDerived &other) {
     n_rows_ = other.Rows();
     n_cols_ = other.Cols();
     nnz_ = other.NonZeroEst();
@@ -124,10 +122,10 @@ public:
     }
     typename OtherDerived::NonZeroIterator it(other);
     SetByIterator(it);
+    return *this;
   }
 
-  template <>
-  SparseMatrix &operator=(const SparseMatrixBase<SparseMatrix> &other) {
+  SparseMatrix &operator=(const SparseMatrix& other) {
     if (&other == this)
       return *this;
     n_rows_ = other.Rows();
@@ -137,33 +135,29 @@ public:
       delete[] outer_idx_;
       outer_idx_ = new uint[other.OuterDim()];
     }
-    memcpy(outer_idx_, other.derived().outer_idx_,
+    memcpy(outer_idx_, other.outer_idx_,
            sizeof(uint) * other.OuterDim());
-    other.derived().outer_idx_ = nullptr;
-    storage_ = other.derived().Storage();
+    other.outer_idx_ = nullptr;
+    storage_ = other.Storage();
   }
 
-  template <typename OtherDerived>
-  SparseMatrix &operator=(SparseMatrixBase<OtherDerived> &&other) {
-    n_rows_ = other.Rows();
-    n_cols_ = other.Cols();
-    nnz_ = other.NonZeroEst();
+  SparseMatrix(SparseMatrix &&other) noexcept
+      : n_rows_(other.Rows()), n_cols_(other.Cols()) {
     delete[] outer_idx_;
+    nnz_ = other.nnz_;
     outer_idx_ = other.outer_idx_;
     other.outer_idx_ = nullptr;
     storage_ = std::move(other.storage_);
   }
-  explicit SparseMatrix(SparseMatrixBase<SparseMatrix> &&other) noexcept
-      : n_rows_(other.Rows()), n_cols_(other.Cols()) {
-    delete[] outer_idx_;
-    nnz_ = other.derived().nnz_;
-    outer_idx_ = other.derived().outer_idx_;
-    other.outer_idx_ = nullptr;
-    storage_ = std::move(other.storage_);
-  }
 
+  // Only allowed for dense vector. Constructor for an n-dim dense vector
   explicit SparseMatrix(uint n) {
-
+    static_assert(IsStaticVector<SparseMatrix>::value);
+    data_ = new Real[n];
+    if constexpr (nRows == 1)
+      n_cols_ = n;
+    else
+      n_rows_ = n;
   }
 
   void Resize(uint m, uint n) {
@@ -179,18 +173,18 @@ public:
   }
 
   Real operator[](uint i) const {
-    static_assert(storage == Dense);
+    static_assert(storageType == Dense);
     return data_[i];
   }
 
   Real &operator[](uint i) {
-    static_assert(storage == Dense);
+    static_assert(storageType == Dense);
     return data_[i];
   }
 
-  using type = SparseMatrix<nRows, nCols, storage, RowMajor>;
+  using type = SparseMatrix<nRows, nCols, storageType, RowMajor>;
   using TransposedMatrix =
-      SparseMatrix<nCols, nRows, storage, transpose_op<Major>::value>;
+      SparseMatrix<nCols, nRows, storageType, transpose_op<Major>::value>;
 
   type Eval() const { return type(*this); }
 
@@ -206,25 +200,27 @@ public:
    * Set the sparse matrix based on the input iterator
    * it runs the iterator and set the corresponding
    * for now, the iterator and the matrix must be in the same storage major
+   * TODO: Add support for different orderings
    * @tparam InputIterator
    * @param it
    */
-  template <typename InputIterator> void SetByIterator(InputIterator it) {
-    if constexpr (storage == Sparse) {
+  template <typename InputIterator> void SetByIterator(InputIterator& it) {
+    if constexpr (storageType == Sparse) {
       uint outer_cnt = 0, inner_cnt = 0;
       while (it()) {
         while (outer_cnt < it.Outer())
           outer_idx_[++outer_cnt] = inner_cnt;
         storage_.InnerIdx(inner_cnt) = it.Inner();
         storage_.Data(inner_cnt) = it.value();
-        it++;
+        inner_cnt++;
+        ++it;
       }
       outer_idx_[outer_cnt] = inner_cnt;
       nnz_ = inner_cnt;
-    } else if (storage == Dense) {
+    } else if (storageType == Dense) {
       while (it()) {
         AccessByMajor(it.Outer(), it.Inner()) = it.value();
-        it++;
+        ++it;
       }
     }
   }
@@ -288,9 +284,7 @@ public:
     else
       return nnz_;
   }
-  uint Dim() const {
-    return Rows() * Cols();
-  }
+  uint Dim() const { return Rows() * Cols(); }
   const SparseStorage &Storage() const { return storage_; }
   uint *OuterIndices() const { return outer_idx_; }
   uint *InnerIndices() const { return storage_.InnerIndices(); }
@@ -309,7 +303,6 @@ public:
   class InnerIterator;
   class NonZeroIterator {
   public:
-    using SparseMatrix = SparseMatrix<nRows, nCols, storage, Major>;
     explicit NonZeroIterator(const SparseMatrix &spm)
         : outer_idx_(spm.OuterIndices()), storage_(spm.Storage()) {}
     uint Row() const {
@@ -335,27 +328,27 @@ public:
       return *this;
     }
 
-    friend std::ostream &operator<<(std::ostream &o, const SparseMatrix &spm) {
-      NonZeroIterator it(spm);
-      while (it()) {
-        o << it.Row() << "," << it.Col() << ", " << it.value() << std::endl;
-        ++it;
-      }
-      return o;
-    }
   private:
     uint inner_ptr_ = 0, outer_ptr_ = 0;
     uint *outer_idx_;
     const SparseStorage &storage_;
   };
 
+  friend std::ostream &operator<<(std::ostream &o, const SparseMatrix &spm) {
+    NonZeroIterator it(spm);
+    while (it()) {
+      o << it.Row() << "," << it.Col() << ", " << it.value() << std::endl;
+      ++it;
+    }
+    return o;
+  }
 protected:
   uint *outer_idx_ = nullptr;
   Real *data_ = nullptr;
   compile_time_uint_t<nRows> n_rows_ = nRows;
   compile_time_uint_t<nCols> n_cols_ = nCols;
-  std::enable_if_t<storage == Sparse, SparseStorage> storage_;
-  std::enable_if_t<storage == Sparse, uint> nnz_ = 0;
+  SparseStorage storage_;
+  uint nnz_ = 0;
 };
 
 using SparseMatrixXd = SparseMatrix<0, 0, Sparse, RowMajor>;
@@ -364,7 +357,6 @@ template <uint nRows, uint nCols, StorageType storage, StorageMajor Major>
 class SparseMatrix<nRows, nCols, storage,
                    Major>::InnerIterator { // mainly used for multiplication
 public:
-  using SparseMatrix = SparseMatrix<nRows, nCols, storage, Major>;
   InnerIterator(const SparseMatrix &mat, uint outer_idx)
       : outer_idx_(outer_idx), begin_(mat.OuterIdx(outer_idx)),
         end_(mat.OuterIdx(outer_idx + 1)), storage_(mat.Storage()),
@@ -378,9 +370,8 @@ public:
     cur_++;
     return *this;
   }
-  template <typename Rhs>
-  LinearExpr<SparseMatrix, Rhs> operator+(const Rhs &rhs) {
-    return LinearExpr<SparseMatrix, Rhs>(rhs);
+  template <typename Rhs> AddExpr<SparseMatrix, Rhs> operator+(const Rhs &rhs) {
+    return AddExpr<SparseMatrix, Rhs>(rhs);
   };
 
 private:
@@ -425,7 +416,7 @@ template <uint nRows_, uint nCols_, StorageType Storage_, StorageMajor Major_>
 struct traits<SparseMatrix<nRows_, nCols_, Storage_, Major_>> {
   static constexpr uint nRows = nRows_;
   static constexpr uint nCols = nCols_;
-  static constexpr StorageType Storage = Storage_;
+  static constexpr StorageType storage = Storage_;
   static constexpr StorageMajor major = Major_;
 };
 
@@ -433,7 +424,7 @@ template <uint nRows_, uint nCols_, StorageMajor Major_>
 struct traits<TripletSparseMatrix<nRows_, nCols_, Major_>> {
   static constexpr uint nRows = nRows_;
   static constexpr uint nCols = nCols_;
-  static constexpr StorageType Storage = Sparse;
+  static constexpr StorageType storage = Sparse;
   static constexpr StorageMajor major = Major_;
 };
 

@@ -31,23 +31,27 @@ template <uint nRows, uint nCols, StorageType storage, StorageMajor Major>
 class SparseMatrix;
 
 template <typename Lhs, typename Rhs> struct ProductReturnType {
-  static_assert(!Lhs::nCols || !Rhs::nRows || Lhs::nCols == Rhs::nRows);
-  using type =
-      SparseMatrix<Lhs::nRows ? Lhs::nRows : 0, Rhs::nCols ? Rhs::nCols : 0,
-                   Lhs::storage == Sparse || Rhs::storage == Sparse ? Sparse
-                                                                    : Dense,
-                   Lhs::major>;
+  static_assert(!traits<Lhs>::nCols || !traits<Rhs>::nRows ||
+                traits<Lhs>::nCols == traits<Rhs>::nRows);
+  using type = SparseMatrix<
+      traits<Lhs>::nRows ? traits<Lhs>::nRows : 0,
+      traits<Rhs>::nCols ? traits<Rhs>::nCols : 0,
+      traits<Lhs>::storage == Sparse || traits<Rhs>::storage == Sparse ? Sparse
+                                                                       : Dense,
+      traits<Lhs>::major>;
 };
 
 template <typename Lhs, typename Rhs> struct SumReturnType {
-  static_assert((!Lhs::nRows || !Rhs::nRows || Lhs::nRows == Rhs::nRows) &&
-                (!Lhs::nCols || !Rhs::nCols || Lhs::nCols == Rhs::nCols));
-  using type =
-      SparseMatrix<(Lhs::nRows || Rhs::nRows) ? (Lhs::nRows | Rhs::nRows) : 0,
-                   (Lhs::nCols || Rhs::nCols) ? (Lhs::nCols | Rhs::nCols) : 0,
-                   Lhs::storage == Dense || Rhs::storage == Dense ? Dense
-                                                                  : Sparse,
-                   Lhs::major>;
+  static_assert((!traits<Lhs>::nRows || !traits<Rhs>::nRows ||
+                 traits<Lhs>::nRows == traits<Rhs>::nRows) &&
+                (!traits<Lhs>::nCols || !traits<Rhs>::nCols ||
+                 traits<Lhs>::nCols == traits<Rhs>::nCols));
+  using type = SparseMatrix<
+      (traits<Lhs>::nRows | traits<Rhs>::nRows),
+      (traits<Lhs>::nCols | traits<Rhs>::nCols),
+      traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense ? Dense
+                                                                     : Sparse,
+      traits<Lhs>::major>;
 };
 
 template <typename Derived> class SparseMatrixBase;
@@ -60,13 +64,21 @@ template <typename Derived> struct IsSparseMatrix<SparseMatrixBase<Derived>> {
   static constexpr bool value = false;
 };
 
-template <typename T>
-using is_spm_v = typename IsSparseMatrix<T>::value;
+template <typename T> using is_spm_v = typename IsSparseMatrix<T>::value;
 
 template <typename T> struct GetDerived {};
 template <typename Derived> struct GetDerived<SparseMatrixBase<Derived>> {
   using type = Derived;
 };
+
+template <typename T> struct IsStaticVector {
+  static constexpr bool value =
+      (traits<T>::nRows == 1 || traits<T>::nCols == 1);
+};
+
+template <typename T>
+using is_static_vector = typename IsStaticVector<T>::value;
+
 } // namespace spmx
 
 // namespace spmx
