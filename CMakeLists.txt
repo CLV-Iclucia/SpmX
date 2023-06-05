@@ -20,6 +20,8 @@ message(STATUS "${CPU_LOGICAL_CORE_NUM} CPU logical cores detected.")
 message(STATUS "${CPU_PHYSICAL_CORE_NUM} CPU physical cores detected.")
 add_definitions(-DNUMBER_OF_CPU_LOGICAL_CORES=${CPU_LOGICAL_CORE_NUM})
 add_definitions(-DNUMBER_OF_CPU_PHYSICAL_CORES=${CPU_PHYSICAL_CORE_NUM})
+# the following option is for debugging
+add_definitions(-DMEMORY_TRACING)
 
 # Copied from the User Guide of Google Test: https://google.github.io/googletest/quickstart-cmake.html
 #include(FetchContent)

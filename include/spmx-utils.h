@@ -8,6 +8,7 @@
 #include <climits>
 #include <random>
 #include <type_traits>
+#include <algorithm>
 
 namespace spmx {
 template <typename T> inline bool SimZero(T x) {
@@ -45,5 +46,18 @@ inline uint Randu() {
   static std::uniform_int_distribution<> distrib(0, INT_MAX);
   return distrib(e);
 }
+
+template <StorageMajor major>
+bool TripletCmp(Triplet ta, Triplet tb) {
+  if constexpr (major == RowMajor) {
+    return std::get<0>(ta) < std::get<0>(tb);
+  } else return std::get<1>(ta) < std::get<1>(tb);
+}
+
+template<typename Iterator, StorageMajor major>
+inline void SortByMajor(Iterator begin, Iterator end) {
+
+}
+
 } // namespace spmx
 #endif // SPMX_SPMX_UTILS_H

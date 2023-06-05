@@ -9,24 +9,24 @@ const uint TEST_MV_MUL = 1u << 2;
 
 using namespace spmx;
 const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 200;
-const uint TESTS = TEST_LIN;
+const uint TESTS = TEST_LIN | TEST_SET;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 static Real golden[MAX_ROWS][MAX_COLS];
 
 static Real A[MAX_ROWS][MAX_COLS], B[MAX_ROWS][MAX_COLS];
 static Real v[MAX_COLS], golden_v[MAX_ROWS];
-void RandFillMat(Real mat[][800], uint nnz) {
+void RandFillMat(Real mat[][MAX_COLS], uint m, uint n, uint nnz) {
   for (uint i = 0; i < nnz; i++) {
-    uint x = Randu();
-    uint y = Randu();
+    uint x = Randu() % m;
+    uint y = Randu() % n;
     Real val = Randu() * RandReal();
     tList[i] = {x, y, val};
     mat[x][y] += val;
   }
 }
 
-bool TestSame(Real stdmat[][800], const SparseMatrixXd &spm) {
+bool TestSame(Real stdmat[][MAX_COLS], const SparseMatrixXd &spm) {
   static std::vector<Triplet> v;
   v.clear();
   spm.toTriplets(v);
@@ -69,29 +69,18 @@ void WriteWrongCase(uint m, uint n, uint nnz) {
 
 void TestSet() {
   uint kase = 0;
-  printf("Running tests on setFromTriplets...\n");
+  printf("Running tests on SetFromTriplets...\n");
   while (kase < MAX_CASES) {
     memset(golden, 0, sizeof(golden));
     uint m = Randu() % MAX_ROWS + 1;
     uint n = Randu() % MAX_COLS + 1;
     uint nnz = Randu() % MAX_NNZ + 1;
-    RandFillMat(golden, nnz);
+    RandFillMat(golden, m, n, nnz);
     SparseMatrixXd spm;
     spm.Resize(m, n);
     spm.SetFromTriplets(tList, tList + nnz);
     if (!TestSame(golden, spm)) {
       std::cerr << "Failed test setFromTriplets. Failing case is:" << std::endl;
-      std::cerr << "A:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(A[i][j]))
-            std::cerr << i << " " << j << " " << A[i][j] << std::endl;
-      std::cerr << "B:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(B[i][j]))
-            std::cerr << i << " " << j << " " << B[i][j] << std::endl;
-      std::cerr << "std:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
           if (!iszero(golden[i][j]))
@@ -117,12 +106,13 @@ void TestLin() {
     uint nnz = Randu() % MAX_NNZ + 1;
     Real a = RandReal();
     Real b = RandReal();
-    RandFillMat(A, nnz);
+    RandFillMat(A, m, n, nnz);
+    std::cout << "fuck" << std::endl;
     SparseMatrixXd spmA, spmB, spm;
     spmA.Resize(m, n);
     spmA.SetFromTriplets(tList, tList + nnz);
     nnz = Randu() % MAX_NNZ + 1;
-    RandFillMat(B, nnz);
+    RandFillMat(B, m, n, nnz);
     for (uint i = 0; i < m; i++)
       for (uint j = 0; j < n; j++)
         golden[i][j] = a * A[i][j] + b * B[i][j];
@@ -165,7 +155,7 @@ void test_mv_mul() {
     uint m = Randu() % MAX_ROWS + 1;
     uint n = Randu() % MAX_COLS + 1;
     uint nnz = Randu() % MAX_NNZ + 1;
-    RandFillMat(A, nnz);
+    RandFillMat(A, m, n, nnz);
     SparseMatrixXd spm;
     Vector<Dense> calc_v(n);
     spm.Resize(m, n);
@@ -199,6 +189,8 @@ void test_mv_mul() {
 
 int main(int argc, char **argv) {
   printf("Start testing arithmetics...\n");
+  if constexpr (TESTS & TEST_SET)
+    TestSet();
   if constexpr (TESTS & TEST_LIN)
     TestLin();
   printf("All tests passed!\n");

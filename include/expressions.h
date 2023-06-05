@@ -28,6 +28,9 @@ public:
       return ret;
     }
   }
+  friend UnaryExpr<Rhs> operator*(Real lhs, const UnaryExpr<Rhs> &rhs) {
+    return UnaryExpr<Rhs>(lhs, rhs);
+  }
   class NonZeroIterator {
   public:
     explicit NonZeroIterator(const Expr &expr)

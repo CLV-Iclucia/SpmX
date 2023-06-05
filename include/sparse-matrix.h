@@ -10,6 +10,7 @@
 #include <iostream>
 #include <sparse-matrix-base.h>
 #include <sparse-storage.h>
+#include <spmx-utils.h>
 #include <utility>
 
 namespace spmx {
@@ -43,6 +44,7 @@ class SparseMatrix
 public:
   using Base = SparseMatrixBase<SparseMatrix<nRows, nCols, storageType, Major>>;
   using Base::toTriplets;
+  using Base::operator*;
   using Base::operator+;
   using Base::operator-;
   SparseMatrix() = default;
@@ -62,14 +64,63 @@ public:
     }
   }
   /**
-   * By default, the space should be allocated
+   * By default, the outer_idx_ should be set previously.
    * @tparam Iterator
    * @param begin
    * @param end
    */
   template <typename Iterator>
-  void SetFromTriplets(Iterator begin, Iterator end) {
-
+  void SetFromTriplets(Iterator begin, Iterator end, uint Options = 0) {
+    if constexpr (storageType == Dense) {
+      memset(data_, 0, sizeof(Real) * Dim());
+      for (Iterator it = begin; it != end; it++)
+        operator()(std::get<0>(*it), std::get<1>(*it)) += std::get<2>(*it);
+    } else {
+      if (!(Options & Ordered))
+        std::sort(begin, end, TripletCmp<Major>);
+      nnz_ = 0;
+      uint outer_idx = 0;
+      for (Iterator it = begin; it != end; it++)
+        nnz_++;
+      storage_.Reserve(nnz_);
+      nnz_ = 0;
+      if (Options & NoRepeat) {
+        for (Iterator it = begin; it != end; it++) {
+          uint outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
+          uint inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
+          while (outer > outer_idx) {
+            outer_idx_[outer_idx] = nnz_;
+            outer_idx++;
+          }
+          storage_.InnerIdx(nnz_) = inner;
+          storage_.Data(nnz_) = std::get<2>(*it);
+          nnz_++;
+        }
+      } else {
+        uint cur_outer = 0, cur_inner = 0;
+        Iterator it = begin;
+        while (it != end) {
+          uint outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
+          uint inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
+          cur_outer = outer;
+          cur_inner = inner;
+          while (outer > outer_idx) {
+            outer_idx_[outer_idx] = nnz_;
+            outer_idx++;
+          }
+          storage_.InnerIdx(nnz_) = inner;
+          while (it != end && outer == cur_outer && inner == cur_inner) {
+            storage_.Data(nnz_) += std::get<2>(*it);
+            it++;
+            if (it == end)
+              break;
+            outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
+            inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
+          }
+        }
+      }
+      outer_idx_[OuterDim() + 1] = nnz_;
+    }
   }
   template <typename OtherDerived>
   explicit SparseMatrix(const SparseMatrixBase<OtherDerived> &spm) {
@@ -125,7 +176,7 @@ public:
     return *this;
   }
 
-  SparseMatrix &operator=(const SparseMatrix& other) {
+  SparseMatrix &operator=(const SparseMatrix &other) {
     if (&other == this)
       return *this;
     n_rows_ = other.Rows();
@@ -135,8 +186,7 @@ public:
       delete[] outer_idx_;
       outer_idx_ = new uint[other.OuterDim()];
     }
-    memcpy(outer_idx_, other.outer_idx_,
-           sizeof(uint) * other.OuterDim());
+    memcpy(outer_idx_, other.outer_idx_, sizeof(uint) * other.OuterDim());
     other.outer_idx_ = nullptr;
     storage_ = other.Storage();
   }
@@ -160,16 +210,40 @@ public:
       n_rows_ = n;
   }
 
+  /**
+   * @param m
+   * @param n
+   */
   void Resize(uint m, uint n) {
-    uint outer_dim = Major == RowMajor ? m : n;
-    if (OuterDim() < outer_dim) {
-      uint *new_outer_idx = new uint[outer_dim + 1];
-      memcpy(new_outer_idx, outer_idx_, sizeof(uint) * (OuterDim() + 1));
-      delete[] outer_idx_;
-      outer_idx_ = new_outer_idx;
+    if constexpr (storageType == Sparse) {
+      uint outer_dim = Major == RowMajor ? m : n;
+      if (OuterDim() < outer_dim) {
+#ifdef MEMORY_TRACING
+        MEMORY_LOG_ALLOC(SparseMatrix, outer_dim + 1);
+#endif
+        uint *new_outer_idx = new uint[outer_dim + 1];
+        if (outer_idx_ != nullptr) {
+          memcpy(new_outer_idx, outer_idx_, sizeof(uint) * (OuterDim() + 1));
+          for (uint i = OuterDim() + 1; i < outer_dim; i++)
+            new_outer_idx[i] = new_outer_idx[i - 1];
+          delete[] outer_idx_;
+        }
+#ifdef MEMORY_TRACING
+        MEMORY_LOG_DELETE(SparseMatrix, sizeof(outer_idx_));
+#endif
+        outer_idx_ = new_outer_idx;
+      }
+      n_rows_ = m;
+      n_cols_ = n;
+    } else {
+      if (m * n > Dim()) { // if we need more space then we need to realloc
+        Real *new_data = new Real[m * n];
+        memcpy(new_data, data_, sizeof(Real) * Dim());
+        memset(new_data + Dim(), 0, sizeof(Real) * (m * n - Dim()));
+        delete[] data_;
+        data_ = new_data;
+      }
     }
-    n_rows_ = m;
-    n_cols_ = n;
   }
 
   Real operator[](uint i) const {
@@ -204,7 +278,7 @@ public:
    * @tparam InputIterator
    * @param it
    */
-  template <typename InputIterator> void SetByIterator(InputIterator& it) {
+  template <typename InputIterator> void SetByIterator(InputIterator &it) {
     if constexpr (storageType == Sparse) {
       uint outer_cnt = 0, inner_cnt = 0;
       while (it()) {
@@ -215,7 +289,6 @@ public:
         inner_cnt++;
         ++it;
       }
-      outer_idx_[outer_cnt] = inner_cnt;
       nnz_ = inner_cnt;
     } else if (storageType == Dense) {
       while (it()) {
@@ -252,18 +325,32 @@ public:
     return diag;
   }
   Real operator()(uint i, uint j) const {
-    int idx = IndexAt(i, j);
-    return idx < 0 ? 0 : Storage().Data(static_cast<uint>(i));
+    if constexpr (storageType == Sparse) {
+      int idx = IndexAt(i, j);
+      return idx < 0 ? 0 : Storage().Data(static_cast<uint>(i));
+    } else {
+      if constexpr (Major == RowMajor)
+        return data_[i * Rows() + j];
+      else
+        return data_[j * Cols() + i];
+    }
   }
 
   Real &operator()(uint i, uint j) {
-    int idx = IndexAt(i, j);
-    if (idx < 0) {
-      std::cerr << "Warning: reference a zero element is not allowed."
-                << std::endl;
-      exit(-1);
+    if constexpr (storageType == Sparse) {
+      int idx = IndexAt(i, j);
+      if (idx < 0) {
+        std::cerr << "Warning: reference a zero element is not allowed."
+                  << std::endl;
+        exit(-1);
+      }
+      return Data(static_cast<uint>(idx));
+    } else {
+      if constexpr (Major == RowMajor)
+        return data_[i * Rows() + j];
+      else
+        return data_[j * Cols() + i];
     }
-    return Data(static_cast<uint>(idx));
   }
 
   uint OuterDim() const {
@@ -342,6 +429,15 @@ public:
     }
     return o;
   }
+  friend UnaryExpr<SparseMatrix> operator*(Real lhs, const SparseMatrix &rhs) {
+    return UnaryExpr<SparseMatrix>(lhs, rhs);
+  }
+  ~SparseMatrix() {
+    delete[] data_;
+    if constexpr (storageType == Sparse)
+      delete[] outer_idx_;
+  }
+
 protected:
   uint *outer_idx_ = nullptr;
   Real *data_ = nullptr;

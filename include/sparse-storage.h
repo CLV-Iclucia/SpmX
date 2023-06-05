@@ -16,6 +16,9 @@ class SparseStorage {
 public:
   SparseStorage() = default;
   explicit SparseStorage(uint allocate_size) : allocated_size_(allocate_size) {
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(SparseStorage, allocate_size);
+#endif
     inner_idx_ = new uint[allocate_size];
     data_ = new Real[allocate_size];
   }
@@ -23,12 +26,18 @@ public:
     assert(allocate_size >= nnz);
     allocated_size_ = allocate_size;
     used_size_ = nnz;
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(SparseStorage, allocate_size);
+#endif
     data_ = new Real[allocate_size];
     inner_idx_ = new uint[allocate_size];
   }
 
   SparseStorage(const SparseStorage &other)
       : allocated_size_(other.allocated_size_), used_size_(other.used_size_) {
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(SparseStorage, other.allocated_size_);
+#endif
     data_ = new Real[allocated_size_];
     memcpy(data_, other.data_, sizeof(Real) * allocated_size_);
     inner_idx_ = new uint[allocated_size_];
@@ -52,8 +61,14 @@ public:
       memcpy(data_, other.data_, sizeof(Real) * other.used_size_);
       return *this;
     }
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_DELETE(SparseStorage, allocated_size_);
+#endif
     delete[] inner_idx_;
     delete[] data_;
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(SparseStorage, other.allocated_size_);
+#endif
     inner_idx_ = new uint[other.allocated_size_];
     data_ = new Real[other.allocated_size_];
     memcpy(inner_idx_, other.inner_idx_, sizeof(uint) * other.used_size_);
@@ -72,15 +87,30 @@ public:
   }
 
   ~SparseStorage() {
+#ifdef MEMORY_TRACING
+    if (inner_idx_ == nullptr && data_ == nullptr)
+      std::cout << "deleting nullptr" << std::endl;
+    else if (inner_idx_ == nullptr || data_ == nullptr)
+      std::cerr << "Warning: SparseStorage is partially put to nullptr" << std::endl;
+    else
+      MEMORY_LOG_DELETE(SparseStorage, allocated_size_);
+#endif
     delete[] inner_idx_;
     delete[] data_;
   }
   void Realloc(uint realloc_size) {
     if (realloc_size != allocated_size_) {
+
       uint *new_inner_idx = new uint[realloc_size];
       Real *new_data = new Real[realloc_size];
+#ifdef MEMORY_TRACING
+      MEMORY_LOG_ALLOC(SparseStorage, realloc_size);
+#endif
       memcpy(new_inner_idx, inner_idx_, sizeof(uint) * allocated_size_);
       memcpy(new_data, data_, sizeof(Real) * allocated_size_);
+#ifdef MEMORY_TRACING
+      MEMORY_LOG_ALLOC(SparseStorage, allocated_size_);
+#endif
       delete[] inner_idx_;
       delete[] data_;
       inner_idx_ = new_inner_idx;
@@ -100,6 +130,23 @@ public:
     }
   }
 
+  void Reserve(uint size) {
+    if (size <= allocated_size_) return ;
+    uint *new_inner_idx = new uint[size];
+    Real *new_data = new Real[size];
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(SparseStorage, size);
+#endif
+    memcpy(new_inner_idx, inner_idx_, sizeof(uint) * allocated_size_);
+    memcpy(new_data, data_, sizeof(Real) * allocated_size_);
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_DELETE(SparseStorage, allocated_size_);
+#endif
+    delete[] inner_idx_;
+    delete[] data_;
+    inner_idx_ = new_inner_idx;
+    data_ = new_data;
+  }
   uint *InnerIndices() const { return inner_idx_; }
   uint InnerIdx(uint i) const { return inner_idx_[i]; }
   uint &InnerIdx(uint i) { return inner_idx_[i]; }
@@ -107,6 +154,7 @@ public:
   Real Data(uint i) const { return data_[i]; }
   Real &Data(uint i) { return data_[i]; }
   uint UsedSize() const { return used_size_; }
+  uint AllocatedSize() const { return allocated_size_; }
 private:
   uint allocated_size_ = 0;
   uint used_size_ = 0;
