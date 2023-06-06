@@ -29,6 +29,11 @@ enum SolverStatus {
 #define MEMORY_LOG_DELETE(ClassName, size)                                     \
   std::cout << "******* Memory Log: " << #ClassName << "-delete " << size      \
             << " *******" << std::endl
-
+#define MEMORY_LOG_INVALID_ACCESS(ClassName, idx)                              \
+  std::cout << "******* Memory Log: " << #ClassName << "-Invalid access "      \
+            << idx << " *******" << std::endl
+#define MEMORY_LOG_MESSAGE(ClassName, msg)                                     \
+  std::cout << "******* Memory Log: " << #ClassName << "-message " << msg << " *******"       \
+            << std::endl
 } // namespace spmx
 #endif // SPMX_TYPES_H

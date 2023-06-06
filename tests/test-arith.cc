@@ -1,6 +1,6 @@
+#include <expressions.h>
 #include <fstream>
 #include <sparse-matrix.h>
-#include <expressions.h>
 #include <spmx-utils.h>
 
 const uint TEST_LIN = 1u << 0;
@@ -8,7 +8,7 @@ const uint TEST_SET = 1u << 1;
 const uint TEST_MV_MUL = 1u << 2;
 
 using namespace spmx;
-const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 200;
+const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 400;
 const uint TESTS = TEST_LIN | TEST_SET;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
@@ -20,7 +20,7 @@ void RandFillMat(Real mat[][MAX_COLS], uint m, uint n, uint nnz) {
   for (uint i = 0; i < nnz; i++) {
     uint x = Randu() % m;
     uint y = Randu() % n;
-    Real val = Randu() * RandReal();
+    Real val = RandReal();
     tList[i] = {x, y, val};
     mat[x][y] += val;
   }
@@ -43,7 +43,8 @@ bool TestSame(Real stdmat[][MAX_COLS], const SparseMatrixXd &spm) {
     return false;
   }
   for (uint i = 0; i < spm.NonZeroEst(); i++)
-    if (!Similar(std::get<2>(v[i]), stdmat[std::get<0>(v[i])][std::get<1>(v[i])])) {
+    if (!Similar(std::get<2>(v[i]),
+                 stdmat[std::get<0>(v[i])][std::get<1>(v[i])])) {
       std::cerr << "Testing same: wrong value" << std::endl;
       return false;
     }
@@ -71,6 +72,8 @@ void TestSet() {
   uint kase = 0;
   printf("Running tests on SetFromTriplets...\n");
   while (kase < MAX_CASES) {
+    std::printf("-------------------------------------------\n");
+    std::printf("Start test %d\n", ++kase);
     memset(golden, 0, sizeof(golden));
     uint m = Randu() % MAX_ROWS + 1;
     uint n = Randu() % MAX_COLS + 1;
@@ -81,6 +84,10 @@ void TestSet() {
     spm.SetFromTriplets(tList, tList + nnz);
     if (!TestSame(golden, spm)) {
       std::cerr << "Failed test setFromTriplets. Failing case is:" << std::endl;
+      for (uint i = 0; i < nnz; i++)
+        std::cerr << std::get<0>(tList[i]) << " " << std::get<1>(tList[i])
+                  << " " << std::get<2>(tList[i]) << std::endl;
+      std::cerr << "Expected" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
           if (!iszero(golden[i][j]))
@@ -89,7 +96,8 @@ void TestSet() {
       std::cerr << spm << std::endl;
       exit(-1);
     }
-    printf("Passed test case %d\n", ++kase);
+    printf("Passed test case %d\n", kase);
+    std::printf("-------------------------------------------\n");
   }
   printf("Passed all tests on setFromTriplets.\n");
 }
@@ -107,7 +115,6 @@ void TestLin() {
     Real a = RandReal();
     Real b = RandReal();
     RandFillMat(A, m, n, nnz);
-    std::cout << "fuck" << std::endl;
     SparseMatrixXd spmA, spmB, spm;
     spmA.Resize(m, n);
     spmA.SetFromTriplets(tList, tList + nnz);
@@ -120,7 +127,7 @@ void TestLin() {
     spmB.SetFromTriplets(tList, tList + nnz);
     spm = a * spmA + b * spmB;
     if (!TestSame(golden, spm)) {
-      std::cerr << "Failed test add. Failing case is:" << std::endl;
+      std::cerr << "Failed test linear. Failing case is:" << std::endl;
       std::cerr << "A:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)

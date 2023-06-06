@@ -5,6 +5,7 @@
 #ifndef SPMX_EXPRESSIONS_H
 #define SPMX_EXPRESSIONS_H
 
+#include <iostream>
 #include <sparse-matrix-base.h>
 namespace spmx {
 
@@ -35,24 +36,33 @@ public:
   public:
     explicit NonZeroIterator(const Expr &expr)
         : coeff_(expr.coeff_), it(expr.rhs_) {}
-    bool operator()() const { return it(); }
+    bool operator()() const {
+      return it();
+    }
     NonZeroIterator &operator++() {
       ++it;
       return *this;
     }
     Real Outer() const { return it.Outer(); }
     Real Inner() const { return it.Inner(); }
+
     Real value() const { return coeff_ * it.value(); }
 
   private:
     Real coeff_ = 0.0;
-    typename Rhs::NonZeroIterator it;
+    typename Rhs::NonZeroIterator it = nullptr;
   };
-  uint NonZeroEst() const { return rhs_.NonZeroEst(); }
+  uint NonZeroEst() const {
+    return rhs_.NonZeroEst();
+  }
 
+  uint Rows() const { return rhs_.Rows(); }
+  uint Cols() const { return rhs_.Cols(); }
+  uint OuterDim() const { return rhs_.OuterDim(); }
+  uint InnerDim() const { return rhs_.InnerDim(); }
 private:
   Real coeff_ = 0;
-  const Rhs &rhs_;
+  const Rhs &rhs_ = nullptr;
 };
 
 /**
@@ -63,7 +73,9 @@ template <typename Lhs, typename Rhs>
 class AddExpr : public SparseMatrixBase<AddExpr<Lhs, Rhs>> {
 public:
   using RetType = typename SumReturnType<Lhs, Rhs>::type;
+  using Base = SparseMatrixBase<AddExpr<Lhs, Rhs>>;
   using Expr = AddExpr<Lhs, Rhs>;
+  using Base::operator+;
   AddExpr(const Lhs &lhs, const Rhs &rhs) : lhs_(lhs), rhs_(rhs) {}
 
   class NonZeroIterator {
@@ -71,6 +83,14 @@ public:
     explicit NonZeroIterator(const Expr &expr)
         : lhs_it_(expr.LhsExpr()), rhs_it_(expr.RhsExpr()) {}
     NonZeroIterator &operator++() {
+      if(!rhs_it_()) {
+        ++lhs_it_;
+        return *this;
+      }
+      if(!lhs_it_()) {
+        ++rhs_it_;
+        return *this;
+      }
       if (lhs_it_.Outer() > rhs_it_.Outer())
         ++rhs_it_;
       else if (lhs_it_.Outer() < rhs_it_.Outer())
@@ -88,14 +108,26 @@ public:
       return *this;
     }
 
-    uint Outer() const { return std::min(lhs_it_.Outer(), rhs_it_.Outer()); }
+    uint Outer() const {
+      if(!rhs_it_()) return lhs_it_.Outer();
+      if(!lhs_it_()) return rhs_it_.Outer();
+      return std::min(lhs_it_.Outer(), rhs_it_.Outer());
+    }
     /**
      * this should only be called when confirmed that lhs_it_.Outer() ==
      * rhs_it_.Outer()
      * @return
      */
-    uint Inner() const { return std::min(lhs_it_.Inner(), rhs_it_.Outer()); }
+    uint Inner() const {
+      if(!rhs_it_()) return lhs_it_.Inner();
+      if(!lhs_it_()) return rhs_it_.Inner();
+      if (lhs_it_.Outer() < rhs_it_.Outer()) return lhs_it_.Inner();
+      else if (lhs_it_.Outer() > rhs_it_.Outer()) return rhs_it_.Inner();
+      return std::min(lhs_it_.Inner(), rhs_it_.Inner());
+    }
     Real value() const {
+      if(!rhs_it_()) return lhs_it_.value();
+      if(!lhs_it_()) return rhs_it_.value();
       if (lhs_it_.Outer() > rhs_it_.Outer())
         return rhs_it_.value();
       else if (lhs_it_.Outer() < rhs_it_.Outer())
@@ -109,7 +141,7 @@ public:
           return lhs_it_.value() + rhs_it_.value();
       }
     }
-    bool operator()() const { return lhs_it_() && rhs_it_(); }
+    bool operator()() const { return lhs_it_() || rhs_it_(); }
 
   private:
     using LhsIter = typename Lhs::NonZeroIterator;
@@ -153,11 +185,8 @@ public:
   }
   const Lhs &LhsExpr() const { return lhs_; }
   const Rhs &RhsExpr() const { return rhs_; }
-  template <typename RhsExpr>
-  AddExpr<Expr, RhsExpr> operator+(const RhsExpr &rhs) const {
-    return AddExpr<Expr, RhsExpr>(*this, rhs);
-  }
-
+  uint Rows() const { return lhs_.Rows(); }
+  uint Cols() const { return lhs_.Cols(); }
   uint OuterDim() const { return lhs_.OuterDim(); }
   uint InnerDim() const { return lhs_.InnerDim(); }
   uint NonZeroEst() const { return lhs_.NonZeroEst() + rhs_.NonZeroEst(); }
@@ -167,7 +196,7 @@ private:
   const Rhs &rhs_;
 };
 
-template<typename Rhs> struct traits<UnaryExpr<Rhs>> {
+template <typename Rhs> struct traits<UnaryExpr<Rhs>> {
   static constexpr uint nRows = traits<Rhs>::nRows;
   static constexpr uint nCols = traits<Rhs>::nCols;
   static constexpr StorageType storage = traits<Rhs>::storage;

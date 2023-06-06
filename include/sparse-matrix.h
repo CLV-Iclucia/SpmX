@@ -58,6 +58,9 @@ public:
         outer_idx_ = new uint[n_rows + 1];
       else if constexpr (Major == ColMajor)
         outer_idx_ = new uint[n_cols + 1];
+#ifdef MEMORY_TRACING
+      outer_idx_used = Major == RowMajor ? n_rows + 1 : n_cols + 1;
+#endif
       nnz_ = nnz;
     } else {
       data_ = new Real[n_rows_ * n_cols_];
@@ -83,12 +86,13 @@ public:
       for (Iterator it = begin; it != end; it++)
         nnz_++;
       storage_.Reserve(nnz_);
+      storage_.Reset(nnz_);
       nnz_ = 0;
       if (Options & NoRepeat) {
         for (Iterator it = begin; it != end; it++) {
           uint outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
           uint inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
-          while (outer > outer_idx) {
+          while (outer >= outer_idx) {
             outer_idx_[outer_idx] = nnz_;
             outer_idx++;
           }
@@ -97,19 +101,19 @@ public:
           nnz_++;
         }
       } else {
-        uint cur_outer = 0, cur_inner = 0;
+        uint cur_outer, cur_inner;
         Iterator it = begin;
         while (it != end) {
           uint outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
           uint inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
           cur_outer = outer;
           cur_inner = inner;
-          while (outer > outer_idx) {
+          while (outer >= outer_idx) {
             outer_idx_[outer_idx] = nnz_;
             outer_idx++;
           }
           storage_.InnerIdx(nnz_) = inner;
-          while (it != end && outer == cur_outer && inner == cur_inner) {
+          while (outer == cur_outer && inner == cur_inner) {
             storage_.Data(nnz_) += std::get<2>(*it);
             it++;
             if (it == end)
@@ -117,16 +121,23 @@ public:
             outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
             inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
           }
+          nnz_++;
         }
       }
-      outer_idx_[OuterDim() + 1] = nnz_;
+      storage_.SetUsed(nnz_);
+      for(uint i = outer_idx; i <= OuterDim(); i++)
+        outer_idx_[i] = nnz_;
     }
   }
   template <typename OtherDerived>
   explicit SparseMatrix(const SparseMatrixBase<OtherDerived> &spm) {
     if constexpr (Major == traits<OtherDerived>::StorageMajor) {
-      outer_idx_ = new uint[n_rows_ + 1];
-      memcpy(n_rows_, spm.n_rows_, sizeof(Real) * spm.n_cols_);
+#ifdef MEMORY_TRACING
+      outer_idx_used = spm.OuterDim() + 1;
+      MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
+#endif
+      outer_idx_ = new uint[spm.OuterDim() + 1];
+      memcpy(outer_idx_, spm.outer_idx_, sizeof(uint) * (spm.OuterDim() + 1));
       storage_ = spm.storage_;
     } else if constexpr (Major != traits<OtherDerived>::StorageMajor) {
       uint outer_dim = OuterDim(), inner_dim = InnerDim();
@@ -164,13 +175,19 @@ public:
   }
   template <typename OtherDerived>
   SparseMatrix &operator=(const OtherDerived &other) {
+    if (other.OuterDim() > OuterDim()) {
+      delete[] outer_idx_;
+#ifdef MEMORY_TRACING
+      MEMORY_LOG_DELETE(SparseMatrix, outer_idx_used);
+      outer_idx_used = other.OuterDim() + 1;
+      MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
+#endif
+      outer_idx_ = new uint[other.OuterDim() + 1];
+    }
     n_rows_ = other.Rows();
     n_cols_ = other.Cols();
     nnz_ = other.NonZeroEst();
-    if (other.OuterDim() > OuterDim()) {
-      delete[] outer_idx_;
-      outer_idx_ = new uint[other.OuterDim()];
-    }
+    storage_.Reserve(nnz_);
     typename OtherDerived::NonZeroIterator it(other);
     SetByIterator(it);
     return *this;
@@ -184,16 +201,22 @@ public:
     nnz_ = other.NonZeroEst();
     if (other.OuterDim() > OuterDim()) {
       delete[] outer_idx_;
-      outer_idx_ = new uint[other.OuterDim()];
+#ifdef MEMORY_TRACING
+      MEMORY_LOG_DELETE(SparseMatrix, outer_idx_used);
+      outer_idx_used = other.OuterDim() + 1;
+      MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
+#endif
+      outer_idx_ = new uint[other.OuterDim() + 1];
     }
-    memcpy(outer_idx_, other.outer_idx_, sizeof(uint) * other.OuterDim());
-    other.outer_idx_ = nullptr;
+    memcpy(outer_idx_, other.outer_idx_, sizeof(uint) * (other.OuterDim() + 1));
     storage_ = other.Storage();
   }
 
   SparseMatrix(SparseMatrix &&other) noexcept
       : n_rows_(other.Rows()), n_cols_(other.Cols()) {
-    delete[] outer_idx_;
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_DELETE(SparseMatrix, outer_idx_used);
+#endif
     nnz_ = other.nnz_;
     outer_idx_ = other.outer_idx_;
     other.outer_idx_ = nullptr;
@@ -226,10 +249,13 @@ public:
           memcpy(new_outer_idx, outer_idx_, sizeof(uint) * (OuterDim() + 1));
           for (uint i = OuterDim() + 1; i < outer_dim; i++)
             new_outer_idx[i] = new_outer_idx[i - 1];
+#ifdef MEMORY_TRACING
+          MEMORY_LOG_DELETE(SparseMatrix, outer_idx_used);
+#endif
           delete[] outer_idx_;
         }
 #ifdef MEMORY_TRACING
-        MEMORY_LOG_DELETE(SparseMatrix, sizeof(outer_idx_));
+        outer_idx_used = outer_dim + 1;
 #endif
         outer_idx_ = new_outer_idx;
       }
@@ -280,16 +306,19 @@ public:
    */
   template <typename InputIterator> void SetByIterator(InputIterator &it) {
     if constexpr (storageType == Sparse) {
-      uint outer_cnt = 0, inner_cnt = 0;
+      uint outer_cnt = 0;
+      nnz_ = 0;
       while (it()) {
-        while (outer_cnt < it.Outer())
-          outer_idx_[++outer_cnt] = inner_cnt;
-        storage_.InnerIdx(inner_cnt) = it.Inner();
-        storage_.Data(inner_cnt) = it.value();
-        inner_cnt++;
+        while (outer_cnt <= it.Outer())
+          outer_idx_[outer_cnt++] = nnz_;
+        storage_.InnerIdx(nnz_) = it.Inner();
+        storage_.Data(nnz_) = it.value();
+        nnz_++;
         ++it;
       }
-      nnz_ = inner_cnt;
+      while(outer_cnt <= OuterDim())
+        outer_idx_[outer_cnt++] = nnz_;
+      storage_.SetUsed(nnz_);
     } else if (storageType == Dense) {
       while (it()) {
         AccessByMajor(it.Outer(), it.Inner()) = it.value();
@@ -391,7 +420,9 @@ public:
   class NonZeroIterator {
   public:
     explicit NonZeroIterator(const SparseMatrix &spm)
-        : outer_idx_(spm.OuterIndices()), storage_(spm.Storage()) {}
+        : outer_idx_(spm.OuterIndices()), storage_(spm.Storage()) {
+      while (outer_idx_[outer_ptr_ + 1] == 0) outer_ptr_++;
+    }
     uint Row() const {
       if constexpr (Major == RowMajor)
         return Outer();
@@ -410,11 +441,10 @@ public:
     bool operator()() const { return inner_ptr_ < storage_.UsedSize(); }
     NonZeroIterator &operator++() {
       inner_ptr_++;
-      while (inner_ptr_ > outer_idx_[outer_ptr_])
+      while (inner_ptr_ >= outer_idx_[outer_ptr_ + 1])
         outer_ptr_++;
       return *this;
     }
-
   private:
     uint inner_ptr_ = 0, outer_ptr_ = 0;
     uint *outer_idx_;
@@ -424,7 +454,7 @@ public:
   friend std::ostream &operator<<(std::ostream &o, const SparseMatrix &spm) {
     NonZeroIterator it(spm);
     while (it()) {
-      o << it.Row() << "," << it.Col() << ", " << it.value() << std::endl;
+      o << it.Row() << ", " << it.Col() << ", " << it.value() << std::endl;
       ++it;
     }
     return o;
@@ -433,12 +463,24 @@ public:
     return UnaryExpr<SparseMatrix>(lhs, rhs);
   }
   ~SparseMatrix() {
-    delete[] data_;
-    if constexpr (storageType == Sparse)
+    if constexpr (storageType == Sparse) {
+#ifdef MEMORY_TRACING
+      MEMORY_LOG_DELETE(SparseMatrix, outer_idx_used);
+#endif
       delete[] outer_idx_;
+    }
+    else {
+#ifdef MEMORY_TRACING
+      MEMORY_LOG_DELETE(SparseMatrix, Dim());
+#endif
+      delete[] data_;
+    }
   }
 
 protected:
+#ifdef MEMORY_TRACING
+  uint outer_idx_used = 0;
+#endif
   uint *outer_idx_ = nullptr;
   Real *data_ = nullptr;
   compile_time_uint_t<nRows> n_rows_ = nRows;
