@@ -7,6 +7,7 @@
 
 #include "spmx-types.h"
 #include <algorithm>
+#include <iostream>
 
 namespace spmx {
 /**
@@ -124,6 +125,61 @@ private:
   unsigned long long *bits_ = nullptr;
   uint size_ = 0;
   uint allocated_ = 0;
+};
+
+/**
+ * a RAII Array class for trivially copyable type.
+ * This is used for temporary arrays in various kinds of functions.
+ * There is an option to construct these arrays on a specified buffer,
+ * so that we can avoid the work of allocating and freeing memory frequently.
+ * @note it is not thread-safe, so please avoid using it in multi-threaded programmes.
+ * @tparam T
+ */
+template <typename T> class Array {
+public:
+  Array(T *data, uint n) : n_(n), data_(new T[n]) {
+    memcpy(data_, data, sizeof(T) * n);
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(Array, n);
+#endif
+  }
+  explicit Array(uint n) : n_(n), data_(new T[n]) {
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(Array, n);
+#endif
+  }
+  T operator[](uint i) const {
+#ifdef MEMORY_TRACING
+    if (i >= n_)
+      MEMORY_LOG_INVALID_ACCESS(Array, i);
+#endif
+    return data_[i];
+  }
+  T &operator[](uint i) {
+#ifdef MEMORY_TRACING
+    if (i >= n_)
+      MEMORY_LOG_INVALID_ACCESS(Array, i);
+#endif
+    return data_[i];
+  }
+  uint Dim() const { return n_; }
+  void Fill(T val) {
+    // if this can be easily assigned, I expect compiler to optimize this
+    for (uint i = 0; i < n_; i++)
+      data_[i] = val;
+  }
+  T* Data() const { return data_; }
+  T* operator+(uint offset) const { return data_ + offset; }
+  ~Array() {
+    delete[] data_;
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(Array, n_);
+#endif
+  }
+
+private:
+  uint n_ = 0;
+  T *data_;
 };
 
 } // namespace spmx

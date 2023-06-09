@@ -5,16 +5,18 @@
 
 const uint TEST_LIN = 1u << 0;
 const uint TEST_SET = 1u << 1;
-const uint TEST_MV_MUL = 1u << 2;
+const uint TEST_DENSE = 1u << 2;
+const uint TEST_DENSE_MMUL = 1u << 3;
+const uint TEST_MV_MUL = 1u << 4;
 
 using namespace spmx;
-const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 400;
+const uint MAX_ROWS = 600, MAX_COLS = 800, MAX_NNZ = 10000;
 const uint TESTS = TEST_LIN | TEST_SET;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 static Real golden[MAX_ROWS][MAX_COLS];
 
-static Real A[MAX_ROWS][MAX_COLS], B[MAX_ROWS][MAX_COLS];
+static Real A[MAX_ROWS][MAX_COLS], B[MAX_ROWS][MAX_COLS], C[MAX_ROWS][MAX_COLS];
 static Real v[MAX_COLS], golden_v[MAX_ROWS];
 void RandFillMat(Real mat[][MAX_COLS], uint m, uint n, uint nnz) {
   for (uint i = 0; i < nnz; i++) {
@@ -109,35 +111,49 @@ void TestLin() {
     memset(golden, 0, sizeof(golden));
     memset(A, 0, sizeof(A));
     memset(B, 0, sizeof(B));
+    memset(C, 0, sizeof(C));
     uint m = Randu() % MAX_ROWS + 1;
     uint n = Randu() % MAX_COLS + 1;
     uint nnz = Randu() % MAX_NNZ + 1;
     Real a = RandReal();
     Real b = RandReal();
+    Real c = RandReal();
+    SparseMatrixXd spmA, spmB, spm, spmC;
     RandFillMat(A, m, n, nnz);
-    SparseMatrixXd spmA, spmB, spm;
     spmA.Resize(m, n);
     spmA.SetFromTriplets(tList, tList + nnz);
-    nnz = Randu() % MAX_NNZ + 1;
+    nnz = Randu() % MAX_NNZ;
     RandFillMat(B, m, n, nnz);
     for (uint i = 0; i < m; i++)
       for (uint j = 0; j < n; j++)
-        golden[i][j] = a * A[i][j] + b * B[i][j];
+        golden[i][j] = a * A[i][j] - b * B[i][j];
     spmB.Resize(m, n);
     spmB.SetFromTriplets(tList, tList + nnz);
-    spm = a * spmA + b * spmB;
+    nnz = Randu() % MAX_NNZ + 1;
+    RandFillMat(C, m, n, nnz);
+    for (uint i = 0; i < m; i++)
+      for (uint j = 0; j < n; j++)
+        golden[i][j] += c * C[i][j];
+    spmC.Resize(m, n);
+    spmC.SetFromTriplets(tList, tList + nnz);
+    spm = a * spmA - b * spmB + c * spmC;
     if (!TestSame(golden, spm)) {
       std::cerr << "Failed test linear. Failing case is:" << std::endl;
       std::cerr << "A:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
           if (!iszero(A[i][j]))
-            std::cerr << i << " " << j << " " << A[i][j] << std::endl;
+            std::cerr << i << " " << j << " " << a * A[i][j] << std::endl;
       std::cerr << "B:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
           if (!iszero(B[i][j]))
-            std::cerr << i << " " << j << " " << B[i][j] << std::endl;
+            std::cerr << i << " " << j << " " << -b * B[i][j] << std::endl;
+      std::cerr << "C:" << std::endl;
+      for (uint i = 0; i < m; i++)
+        for (uint j = 0; j < n; j++)
+          if (!iszero(C[i][j]))
+            std::cerr << i << " " << j << " " << c * C[i][j] << std::endl;
       std::cerr << "std:" << std::endl;
       for (uint i = 0; i < m; i++)
         for (uint j = 0; j < n; j++)
@@ -152,7 +168,7 @@ void TestLin() {
   printf("Passed all tests on add.\n");
 }
 
-void test_mv_mul() {
+void TestMvMul() {
   uint kase = 0;
   printf("Running tests on mat-vec multiplication...\n");
   while (kase < MAX_CASES) {

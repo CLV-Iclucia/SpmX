@@ -23,23 +23,9 @@ public:
   }
   template<typename MatDerived>
   void BuildFromMatrix(const SparseMatrixBase<MatDerived> &A) {
-    int *anc = new int[num_nodes_];
-    for (uint i = 1; i < num_nodes_; i++) {
-      for (uint j = A.OuterIndex(i);
-           j < A.OuterIndex(i + 1) && A.InnerIdx(j) < i; j++) {
-        uint x = A.InnerIdx(j);
-        while(fa_[x] >= 0) {
-          uint t = anc[x];
-          anc[x] = static_cast<int>(i);
-          x = t;
-        }
-        fa_[x] = anc[x] = static_cast<int>(i);
-      }
-    }
-    delete[] anc;
+
   }
 };
-// TODO: Postorder
 
 }
 

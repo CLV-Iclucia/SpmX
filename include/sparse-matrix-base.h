@@ -5,11 +5,18 @@
 #ifndef SPMX_SPARSE_MATRIX_BASE_H
 #define SPMX_SPARSE_MATRIX_BASE_H
 
+#include <my-stl.h>
+#include <mat-mul-impl.h>
 #include <spmx-utils.h>
 #include <type-utils.h>
 
 namespace spmx {
-template <typename Lhs, typename Rhs> class AddExpr;
+
+template <typename Lhs, typename Rhs, int Coeff> class LinearExpr;
+template <typename Lhs, typename Rhs>
+using AddExpr = LinearExpr<Lhs, Rhs, 1>;
+template <typename Lhs, typename Rhs>
+using SubExpr = LinearExpr<Lhs, Rhs, -1>;
 template <typename Rhs> class UnaryExpr;
 /**
  * I use CRTP for all the matrix and vectors!
@@ -27,6 +34,7 @@ public:
     return *(static_cast<const Derived *>(this));
   }
 
+  inline typename traits<Derived>::EvalType Eval() { return derived().Eval(); }
   inline uint OuterDim() const { return derived().OuterDim(); }
   inline uint InnerDim() const { return derived().InnerDim(); }
   inline uint OuterIdx(uint i) const { return derived().OuterIdx(i); }
@@ -38,91 +46,54 @@ public:
   inline uint NonZeroEst() const { return derived().NonZeroEst(); }
   inline uint Dim() const { return Rows() * Cols(); }
 
-  bool IsVector() const { return Rows() == 1 || Cols() == 1; }
-
   template <typename Lhs, typename Rhs>
   using ProdRet = typename ProductReturnType<Lhs, Rhs>::type;
 
-  template <typename Lhs, typename Rhs>
-  using SumRet = typename SumReturnType<Lhs, Rhs>::type;
-
   using Lhs = Derived;
+  /**
+   * Sparse matrix multiplication.
+   * All the return types are SparseMatrix, so it makes no sense to support
+   * multiplication of other possible matrix storage.
+   * first we need to evaluate the lhs and rhs, if they are expressions
+   * we will convert them to SparseMatrix class and perform multiplication
+   * there is one special case where at least one of lhs and rhs is a matrix
+   * in that case, we will use the const reference instead of an evaluation
+   * note that both lhsEval and rhsEval (if they are the evaluation of
+   * expressions) can only survive in this function, but since we
+   * evaluate immediately, when the function returns the returned
+   * matrix is already available and we can safely destruct them.
+   * @tparam Rhs
+   * @param rhs
+   * @return
+   */
   template <typename Rhs>
   ProdRet<Lhs, Rhs> operator*(const SparseMatrixBase<Rhs> &rhs) const {
-    if constexpr (major != traits<Rhs>::major) {
-      uint est_nnz = 0;
-      for (uint i = 0; i < OuterDim(); i++) {
-        for (uint j = 0; j < rhs.OuterDim(); j++) {
-          uint lptr = OuterIdx(i), rptr = rhs.OuterIdx(j);
-          while (lptr < InnerIdx(i + 1) && rptr < rhs.InnerIdx(j + 1)) {
-            if (InnerIdx(lptr) < rhs.InnerIdx(rptr))
-              lptr++;
-            else if (rhs.InnerIdx(rptr) < InnerIdx(lptr))
-              rptr++;
-            else {
-              est_nnz++;
-              break;
-            }
-          }
-        }
-      }
-      ProdRet<Lhs, Rhs> ret(Rows(), Cols(), est_nnz);
-      uint cnt = 0;
-      for (uint i = 0; i < OuterDim(); i++) {
-        ret.OuterIdx(i) = cnt;
-        for (uint j = 0; j < rhs.OuterDim(); j++) {
-          uint lptr = OuterIdx(i), rptr = rhs.OuterIdx(j);
-          Real sum = 0.0;
-          while (lptr < OuterIdx(i + 1) && rptr < rhs.OuterIdx(j + 1)) {
-            if (InnerIdx(lptr) < rhs.InnerIdx(rptr))
-              lptr++;
-            else if (InnerIdx(lptr) > rhs.InnerIdx(rptr))
-              rptr++;
-            else {
-              sum += Data(lptr) * rhs.Data(rptr);
-              lptr++;
-              rptr++;
-            }
-          }
-          if (!iszero(sum)) {
-            ret.InnerIdx(cnt) = j;
-            ret.Data(cnt++) = sum;
-          }
-        }
-        ret.OuterIdx(ret.OuterDim()) = cnt;
-      }
-      return ret;
+    static_assert((traits<Lhs>::storage == traits<Rhs>::storage) &&
+                      !is_supported_vector<Lhs> && !is_supported_vector<Rhs>,
+                  "Error: Oops, multiplication of sparse matrices and dense "
+                  "matrices are not supported yet. SpmX is a small lib "
+                  "designed specifically for sparse matrices. More support for "
+                  "dense matrices will be provided in future updates");
+    std::conditional_t<is_spm_v<Lhs>, const Lhs &,
+                       typename traits<Lhs>::EvalType>
+        lhsEval(is_spm_v<Lhs> ? derived() : Eval());
+    std::conditional_t<is_spm_v<Rhs>, const Rhs &,
+                       typename traits<Rhs>::EvalType>
+        rhsEval(is_spm_v<Lhs> ? rhs.derived() : rhs.Eval());
+
+    if constexpr (is_supported_vector<Lhs>) {
+      return SpmvImpl(lhsEval, rhsEval);
+    }
+    if constexpr (traits<Lhs>::storage == Dense &&
+                  traits<Rhs>::storage == Dense) {
+      return DenseDenseMatMulImpl(lhsEval, rhsEval);
+    } else if (traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense) {
+      // if one of the matrix is a dense matrix then life is easier
+      // TODO: implement this in future updates
     } else {
-      uint est_nnz = 0;
-//      // estimate the number of non-zero elements of the result
-//      BitSet bucket(InnerDim());
-//      for (uint i = 0; i < OuterDim(); i++) {
-//        bucket.Clear();
-//        for (uint j = OuterIdx(i); j < OuterIdx(i + 1); j++) {
-//          uint idx = InnerIdx(j);
-//          for (uint k = rhs.OuterIdx(idx); k < rhs.OuterIdx(idx + 1); k++)
-//            if (!bucket(rhs.InnerIdx(k)))
-//              bucket.Set(rhs.InnerIdx(k));
-//        }
-//        est_nnz += bucket.BitCnt();
-//      }
-      ProdRet<Lhs, Rhs> ret(Rows(), rhs.Cols(), est_nnz);
-//      uint cnt = 0;
-//      for (uint i = 0; i < OuterDim(); i++) { // TODO: this is wrong
-//        bucket.Clear();
-//        ret.OuterIdx(i) = cnt;
-//        for (uint j = OuterIdx(i); j < OuterIdx(i + 1); j++) {
-//          uint idx = InnerIdx(j);
-//          for (uint k = rhs.OuterIdx(idx); k < rhs.OuterIdx(idx + 1); k++) {
-//            if (!bucket(rhs.InnerIdx(k))) {
-//              ret.inner[ret.nnz++] = rhs.InnerIdx(k);
-//            }
-//            ret.val[ret.nnz] += Data(j) * rhs.Data(k);
-//          }
-//        }
-//      }
-//      ret.OuterIdx(rhs.OuterDim()) = cnt;
-      return ret;
+      if constexpr (major != traits<Rhs>::major)
+        rhsEval = rhsEval.Transpose();
+      return SparseSparseMatMulImpl(lhsEval, rhsEval);
     }
   }
 
@@ -132,11 +103,13 @@ public:
 
   template <typename Rhs> AddExpr<Lhs, Rhs> operator+(const Rhs &rhs) const;
 
-  template <typename Rhs> AddExpr<Lhs, Rhs> operator-(const Rhs &rhs) const;
+  template <typename Rhs> SubExpr<Lhs, Rhs> operator-(const Rhs &rhs) const;
 
   template <typename Rhs> Lhs &operator+=(const Rhs &rhs) const;
 
   template <typename Rhs> Lhs &operator-=(const Rhs &rhs) const;
+
+  template <typename Rhs> Lhs &operator*=(const Rhs &rhs) const;
 
   Real operator[](uint i) const { return derived().operator[](i); }
 
@@ -150,6 +123,11 @@ public:
     }
   }
 };
+
+template <typename Rhs>
+UnaryExpr<Rhs> operator*(Real lhs, const SparseMatrixBase<Rhs> &rhs) {
+  return UnaryExpr<Rhs>(lhs, rhs.derived());
+}
 
 } // namespace spmx
 

@@ -21,7 +21,7 @@ message(STATUS "${CPU_PHYSICAL_CORE_NUM} CPU physical cores detected.")
 add_definitions(-DNUMBER_OF_CPU_LOGICAL_CORES=${CPU_LOGICAL_CORE_NUM})
 add_definitions(-DNUMBER_OF_CPU_PHYSICAL_CORES=${CPU_PHYSICAL_CORE_NUM})
 # the following option is for debugging
-add_definitions(-DMEMORY_TRACING)
+# add_definitions(-DMEMORY_TRACING)
 
 # Copied from the User Guide of Google Test: https://google.github.io/googletest/quickstart-cmake.html
 #include(FetchContent)
@@ -46,11 +46,13 @@ set(SPMX_SRC_DIRS "${CMAKE_CURRENT_LIST_DIR}/src")
 set(SPMX_TESTS_DIRS "${CMAKE_CURRENT_LIST_DIR}/tests")
 
 file(GLOB SPMX_HEADERS ${SPMX_INCLUDE_DIRS}/*)
+file(GLOB SPMX_CHOLESKY ${SPMX_INCLUDE_DIRS}/sparse-cholesky/*)
 file(GLOB SPMX_SRC ${SPMX_SRC_DIRS}/*)
 include_directories(${SPMX_INCLUDE_DIRS})
 
 # if(benchmark_FOUND)
 #    target_link_libraries(benchmark GoogleBenchmark)
    add_executable(test-arith tests/test-arith.cc ${SPMX_HEADERS})
-
+    add_executable(test-cholesky tests/test-cholesky.cc ${SPMX_HEADERS} ${SPMX_CHOLESKY})
+    add_executable(bench-arith tests/benchmark-arith.cc ${SPMX_HEADERS} ${SPMX_CHOLESKY})
 # endif()

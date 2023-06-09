@@ -110,6 +110,7 @@ public:
     delete[] inner_idx_;
     delete[] data_;
   }
+
   void Realloc(uint realloc_size) {
     if (realloc_size != allocated_size_) {
       uint *new_inner_idx = new uint[realloc_size];
