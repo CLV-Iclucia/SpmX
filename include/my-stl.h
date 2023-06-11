@@ -78,20 +78,6 @@ public:
   ~List() { clear(); }
 };
 
-template <typename T> class AvlTree {
-public:
-private:
-  class AvlNode {
-    T key_;
-    int bf_ = 0;
-    AvlNode(T key) : key_(key) {}
-    AvlNode *ch_[2] = {nullptr, nullptr};
-  };
-  AvlNode *rt_;
-  void Insert() {}
-  bool Find() {}
-};
-
 class BitSet {
 public:
   using ull = unsigned long long;
@@ -170,6 +156,20 @@ public:
   }
   T* Data() const { return data_; }
   T* operator+(uint offset) const { return data_ + offset; }
+  T operator()(uint i) const {
+#ifdef MEMORY_TRACING
+    if (i >= n_)
+      MEMORY_LOG_INVALID_ACCESS(Array, i);
+#endif
+    return data_[i];
+  }
+  T& operator()(uint i) {
+#ifdef MEMORY_TRACING
+    if (i >= n_)
+      MEMORY_LOG_INVALID_ACCESS(Array, i);
+#endif
+    return data_[i];
+  }
   ~Array() {
     delete[] data_;
 #ifdef MEMORY_TRACING

@@ -13,7 +13,6 @@ namespace spmx {
 template <typename Derived> class FactorizeSolver {
 public:
   SolverStatus info() const { return status_; }
-
 protected:
   SolverStatus status_ = Undefined;
 };

@@ -49,14 +49,13 @@ public:
 
   class InnerIterator {
   public:
-    explicit InnerIterator(const Expr &expr)
-        : coeff_(expr.coeff_), it(expr.rhs_) {}
+    explicit InnerIterator(const Expr &expr, uint i)
+        : coeff_(expr.coeff_), it(expr.rhs_, i) {}
     bool operator()() const { return it(); }
     [[maybe_unused]] InnerIterator &operator++() {
       ++it;
       return *this;
     }
-    uint Outer() const { return it.Outer(); }
     uint Inner() const { return it.Inner(); }
     Real value() const { return coeff_ * it.value(); }
 
@@ -103,16 +102,15 @@ private:
 };
 
 /**
- * @note AddExpr doesn't implement nested iterator class. So in multiplication
- * it needs to be evaluated immediately
+ * @note LinearExpr requires both to be in the same storage
  * @tparam Lhs
  * @tparam Rhs
  */
 template <typename Lhs, typename Rhs, int Coeff>
 class LinearExpr : public SparseMatrixBase<LinearExpr<Lhs, Rhs, Coeff>> {
-  static_assert("Error: current version doesn't support implicit addition of "
+  static_assert(traits<Lhs>::storage == traits<Rhs>::storage,
+                "Error: current version doesn't support implicit addition of "
                 "dense matrices and sparse matrices.");
-
 public:
   using RetType = typename SumReturnType<Lhs, Rhs>::type;
   using Base = SparseMatrixBase<LinearExpr<Lhs, Rhs, Coeff>>;
@@ -243,6 +241,56 @@ public:
        return ret;
      }*/
   }
+  class InnerIterator {
+  public:
+    explicit InnerIterator(const Expr &expr, uint i)
+        : lhs_it_(expr.lhs_, i), rhs_it_(expr.rhs_, i) {}
+    bool operator()() const { return lhs_it_() && rhs_it_(); }
+    [[maybe_unused]] InnerIterator &operator++() {
+      if (!rhs_it_()) {
+        ++lhs_it_;
+        return *this;
+      }
+      if (!lhs_it_()) {
+        ++rhs_it_;
+        return *this;
+      }
+      if (lhs_it_.Inner() < rhs_it_.Inner())
+        ++lhs_it_;
+      else if (lhs_it_.Inner() > rhs_it_.Inner())
+        ++rhs_it_;
+      else {
+        ++lhs_it_;
+        ++rhs_it_;
+      }
+      return *this;
+    }
+    uint Inner() const {
+      if (!lhs_it_())
+        return rhs_it_.Inner();
+      if (!rhs_it_())
+        return lhs_it_.Inner();
+      return std::min(lhs_it_.Inner(), rhs_it_.Inner());
+    }
+    Real value() const {
+      if (!rhs_it_())
+        return lhs_it_.value();
+      if (!lhs_it_())
+        return Coeff * rhs_it_.value();
+      if (lhs_it_.Inner() < rhs_it_.Inner())
+        return lhs_it_.value();
+      else if (lhs_it_.Inner() > rhs_it_.Inner())
+        return Coeff * rhs_it_.value();
+      else
+        return lhs_it_.value() + Coeff * rhs_it_.value();
+    }
+
+  private:
+    using LhsIter = typename Lhs::InnerIterator;
+    using RhsIter = typename Rhs::InnerIterator;
+    LhsIter lhs_it_;
+    RhsIter rhs_it_;
+  };
   Real operator()(uint i, uint j) const {
     static_assert(traits<RetType>::storage == Dense);
     return lhs_(i, j) + Coeff * rhs_(i, j);
@@ -272,7 +320,8 @@ template <typename Rhs> struct traits<UnaryExpr<Rhs>> {
   static constexpr StorageMajor major = traits<Rhs>::major;
 };
 
-template <typename Lhs, typename Rhs, int Coeff> struct traits<LinearExpr<Lhs, Rhs, Coeff>> {
+template <typename Lhs, typename Rhs, int Coeff>
+struct traits<LinearExpr<Lhs, Rhs, Coeff>> {
   using EvalType = typename SumReturnType<Lhs, Rhs>::type;
   static constexpr uint nRows = traits<EvalType>::nRows;
   static constexpr uint nCols = traits<EvalType>::nCols;
@@ -292,20 +341,16 @@ SparseMatrixBase<Derived>::operator-() const {
   return UnaryExpr<Derived>(-1, derived());
 }
 
-template <typename Lhs, typename Rhs>
-using AddExpr = LinearExpr<Lhs, Rhs, 1>;
+template <typename Lhs, typename Rhs> using AddExpr = LinearExpr<Lhs, Rhs, 1>;
 
-template <typename Lhs, typename Rhs>
-using SubExpr = LinearExpr<Lhs, Rhs, -1>;
+template <typename Lhs, typename Rhs> using SubExpr = LinearExpr<Lhs, Rhs, -1>;
 
 template <typename Derived>
 template <typename Rhs>
 AddExpr<typename SparseMatrixBase<Derived>::Lhs, Rhs>
 SparseMatrixBase<Derived>::operator+(const Rhs &rhs) const {
-  if constexpr (is_same_major<Lhs, Rhs>)
-    return AddExpr<Lhs, Rhs>(derived(), rhs);
-  else
-    return operator+(rhs.Transposed());
+
+  return AddExpr<Lhs, Rhs>(derived(), rhs);
 }
 
 template <typename Derived>
@@ -318,7 +363,7 @@ SparseMatrixBase<Derived>::operator-(const Rhs &rhs) const {
 template <typename Derived>
 template <typename Rhs>
 typename SparseMatrixBase<Derived>::Lhs &
-SparseMatrixBase<Derived>::operator+=(const Rhs &rhs) const {
+SparseMatrixBase<Derived>::operator+=(const Rhs &rhs) {
   static_assert(
       !(traits<Derived>::storage == Sparse && traits<Rhs>::storage == Dense),
       "Error: current version doesn't support assigning a dense matrix to a "
@@ -339,7 +384,7 @@ SparseMatrixBase<Derived>::operator+=(const Rhs &rhs) const {
 template <typename Derived>
 template <typename Rhs>
 typename SparseMatrixBase<Derived>::Lhs &
-SparseMatrixBase<Derived>::operator-=(const Rhs &rhs) const {
+SparseMatrixBase<Derived>::operator-=(const Rhs &rhs) {
   if (traits<Derived>::storage == Sparse) {
     derived() = derived() - rhs;
   } else {
@@ -354,9 +399,8 @@ SparseMatrixBase<Derived>::operator-=(const Rhs &rhs) const {
 template <typename Derived>
 template <typename Rhs>
 typename SparseMatrixBase<Derived>::Lhs &
-SparseMatrixBase<Derived>::operator*=(const Rhs &rhs) const {
-  derived() = derived() * rhs;
-  return derived();
+SparseMatrixBase<Derived>::operator*=(const Rhs &rhs) {
+  return derived() = derived() * rhs;
 }
 
 } // namespace spmx

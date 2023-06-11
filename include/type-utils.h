@@ -17,12 +17,22 @@ template <StorageMajor MajorType> struct transpose_op {
 };
 
 template <StorageMajor MajorType>
-using transpose_t = typename transpose_op<MajorType>::type;
+static constexpr StorageMajor transpose_v = transpose_op<MajorType>::value;
 
 template <typename T> struct traits {};
 
 template <uint nRows, uint nCols, StorageType storage, StorageMajor Major>
 class SparseMatrix;
+
+template <typename Lhs, typename Rhs> struct SameShape {
+  static constexpr bool value = (!traits<Lhs>::nRows || !traits<Rhs>::nRows ||
+                                 traits<Lhs>::nRows == traits<Rhs>::nRows) &&
+                                (!traits<Lhs>::nCols || !traits<Rhs>::nCols ||
+                                 traits<Lhs>::nCols == traits<Rhs>::nCols);
+};
+
+template <typename Lhs, typename Rhs>
+static constexpr bool is_same_shape_v = SameShape<Lhs, Rhs>::value;
 
 template <typename Lhs, typename Rhs> struct ProductReturnType {
   static_assert(!traits<Lhs>::nCols || !traits<Rhs>::nRows ||
@@ -37,18 +47,14 @@ template <typename Lhs, typename Rhs> struct ProductReturnType {
 };
 
 template <typename Lhs, typename Rhs> struct SumReturnType {
-  static_assert((!traits<Lhs>::nRows || !traits<Rhs>::nRows ||
-                 traits<Lhs>::nRows == traits<Rhs>::nRows) &&
-                (!traits<Lhs>::nCols || !traits<Rhs>::nCols ||
-                 traits<Lhs>::nCols == traits<Rhs>::nCols));
+  static_assert(is_same_shape_v<Lhs, Rhs>);
   using type = SparseMatrix<
       (traits<Lhs>::nRows | traits<Rhs>::nRows),
       (traits<Lhs>::nCols | traits<Rhs>::nCols),
       traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense ? Dense
                                                                      : Sparse,
-      traits<Lhs>::major == Symmetric && traits<Lhs>::major == Symmetric
-          ? Symmetric
-          : traits<Lhs>::major>;
+      traits<Lhs>::major == Symmetric ? traits<Rhs>::major
+                                      : traits<Lhs>::major>;
 };
 
 template <typename T> struct remove_all {
@@ -71,10 +77,7 @@ struct IsSparseMatrix<SparseMatrix<nRows, nCols, storageType, Major>> {
 
 template <typename T> static constexpr bool is_spm_v = IsSparseMatrix<T>::value;
 
-template <typename T> struct GetDerived {};
-template <typename Derived> struct GetDerived<SparseMatrixBase<Derived>> {
-  using type = Derived;
-};
+template <typename Derived> class SparseMatrixBase;
 
 template <typename T> struct IsSupportedVector {
   static constexpr bool value = !std::is_same_v<remove_all_t<T>, T> &&
@@ -85,6 +88,18 @@ template <uint nRows, uint nCols, StorageType storageType, StorageMajor Major>
 struct IsSupportedVector<SparseMatrix<nRows, nCols, storageType, Major>> {
   static constexpr bool value =
       (nRows == 1 && Major == RowMajor) || (nCols == 1 && Major == ColMajor);
+};
+
+template <typename Rhs> class UnaryExpr;
+template <typename Lhs, typename Rhs, int Coeff> class LinearExpr;
+template <typename Rhs> struct IsSupportedVector<UnaryExpr<Rhs>> {
+  static constexpr bool value = IsSupportedVector<Rhs>::value;
+};
+
+template <typename Lhs, typename Rhs, int Coeff>
+struct IsSupportedVector<LinearExpr<Lhs, Rhs, Coeff>> {
+  static constexpr bool value = IsSupportedVector<
+      typename traits<LinearExpr<Lhs, Rhs, Coeff>>::EvalType>::value;
 };
 
 template <typename T>
@@ -106,6 +121,18 @@ template <typename Lhs, typename Rhs> struct SameMajor {
 template <typename Lhs, typename Rhs>
 static constexpr bool is_same_major = SameMajor<Lhs, Rhs>::value;
 
+template <typename T, StorageMajor major_> struct is_supported_vector_of_major {
+  static constexpr bool value = is_supported_vector<T> &&
+                                traits<remove_all_t<T>>::major == major_ &&
+                                ((traits<remove_all_t<T>>::major == RowMajor &&
+                                  traits<remove_all_t<T>>::nRows == 1) ||
+                                 (traits<remove_all_t<T>>::major == ColMajor &&
+                                  traits<remove_all_t<T>>::nCols == 1));
+};
+
+template <typename T, StorageMajor major_>
+static constexpr bool is_supported_vector_of_major_v =
+    is_supported_vector_of_major<T, major_>::value;
 } // namespace spmx
 
 // namespace spmx

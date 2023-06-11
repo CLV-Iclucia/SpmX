@@ -48,7 +48,7 @@ inline uint Randu() {
 }
 
 template <StorageMajor major> bool TripletCmp(Triplet ta, Triplet tb) {
-  if constexpr (major == RowMajor) {
+  if constexpr (major == RowMajor || major == Symmetric) {
     return std::get<0>(ta) == std::get<0>(tb)
                ? std::get<1>(ta) < std::get<1>(tb)
                : std::get<0>(ta) < std::get<0>(tb);
@@ -58,8 +58,45 @@ template <StorageMajor major> bool TripletCmp(Triplet ta, Triplet tb) {
                : std::get<1>(ta) < std::get<1>(tb);
 }
 
-template <typename Iterator, StorageMajor major>
-inline void SortByMajor(Iterator begin, Iterator end) {}
+template <typename Vec> inline Real L2NormSqr(const Vec &v) {
+  Real sum = 0;
+  if (traits<Vec>::storage == Sparse) {
+    for (typename Vec::NonZeroIterator it(v); it(); ++it)
+      sum += it.value() * it.value();
+  } else {
+    for (uint i = 0; i < v.Dim(); i++)
+      sum += v(i) * v(i);
+  }
+  return sum;
+}
+
+template <typename Vec> inline Real L2Norm(const Vec &v) {
+  Real sum = 0;
+  if (traits<Vec>::storage == Sparse) {
+    for (typename Vec::NonZeroIterator it(v); it(); ++it)
+      sum += it.value() * it.value();
+  } else {
+    for (uint i = 0; i < v.Dim(); i++)
+      sum += v(i) * v(i);
+  }
+  return std::sqrt(sum);
+}
+
+template <typename Vec> inline Real L1Norm(const Vec &v) {
+  Real sum = 0;
+  if (traits<Vec>::storage == Sparse) {
+    for (typename Vec::NonZeroIterator it(v); it(); ++it)
+      sum += std::abs(it.value());
+  } else {
+    for (uint i = 0; i < v.Dim(); i++)
+      sum += std::abs(v(i));
+  }
+  return sum;
+}
+
+template <typename Lhs, typename Rhs> inline Real Dot(const Lhs& lhs, const Rhs& rhs) {
+
+}
 
 } // namespace spmx
 #endif // SPMX_SPMX_UTILS_H

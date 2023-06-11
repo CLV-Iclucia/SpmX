@@ -174,8 +174,10 @@ public:
   uint *InnerIndices() const { return inner_idx_; }
   uint InnerIdx(uint i) const {
 #ifdef MEMORY_TRACING
-    if (i >= allocated_size_)
+    if (i >= allocated_size_) {
       MEMORY_LOG_INVALID_ACCESS(SparseStorage, i);
+      exit(-1);
+    }
 #endif
      return inner_idx_[i];
   }
@@ -183,8 +185,10 @@ public:
   Real *Datas() const { return data_; }
   Real Data(uint i) const {
 #ifdef MEMORY_TRACING
-     if (i >= allocated_size_)
+     if (i >= allocated_size_) {
       MEMORY_LOG_INVALID_ACCESS(SparseStorage, i);
+      exit(-1);
+     }
 #endif
      return data_[i];
   }

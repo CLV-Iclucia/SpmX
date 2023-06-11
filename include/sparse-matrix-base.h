@@ -5,18 +5,16 @@
 #ifndef SPMX_SPARSE_MATRIX_BASE_H
 #define SPMX_SPARSE_MATRIX_BASE_H
 
-#include <my-stl.h>
 #include <mat-mul-impl.h>
+#include <my-stl.h>
 #include <spmx-utils.h>
 #include <type-utils.h>
 
 namespace spmx {
 
 template <typename Lhs, typename Rhs, int Coeff> class LinearExpr;
-template <typename Lhs, typename Rhs>
-using AddExpr = LinearExpr<Lhs, Rhs, 1>;
-template <typename Lhs, typename Rhs>
-using SubExpr = LinearExpr<Lhs, Rhs, -1>;
+template <typename Lhs, typename Rhs> using AddExpr = LinearExpr<Lhs, Rhs, 1>;
+template <typename Lhs, typename Rhs> using SubExpr = LinearExpr<Lhs, Rhs, -1>;
 template <typename Rhs> class UnaryExpr;
 /**
  * I use CRTP for all the matrix and vectors!
@@ -34,7 +32,9 @@ public:
     return *(static_cast<const Derived *>(this));
   }
 
-  inline typename traits<Derived>::EvalType Eval() { return derived().Eval(); }
+  inline typename traits<Derived>::EvalType Eval() const {
+    return derived().Eval();
+  }
   inline uint OuterDim() const { return derived().OuterDim(); }
   inline uint InnerDim() const { return derived().InnerDim(); }
   inline uint OuterIdx(uint i) const { return derived().OuterIdx(i); }
@@ -68,48 +68,35 @@ public:
    */
   template <typename Rhs>
   ProdRet<Lhs, Rhs> operator*(const SparseMatrixBase<Rhs> &rhs) const {
-    static_assert((traits<Lhs>::storage == traits<Rhs>::storage) &&
-                      !is_supported_vector<Lhs> && !is_supported_vector<Rhs>,
+    static_assert(traits<Lhs>::storage == traits<Rhs>::storage ||
+                      is_supported_vector<Lhs> || is_supported_vector<Rhs>,
                   "Error: Oops, multiplication of sparse matrices and dense "
                   "matrices are not supported yet. SpmX is a small lib "
                   "designed specifically for sparse matrices. More support for "
                   "dense matrices will be provided in future updates");
-    std::conditional_t<is_spm_v<Lhs>, const Lhs &,
-                       typename traits<Lhs>::EvalType>
-        lhsEval(is_spm_v<Lhs> ? derived() : Eval());
-    std::conditional_t<is_spm_v<Rhs>, const Rhs &,
-                       typename traits<Rhs>::EvalType>
-        rhsEval(is_spm_v<Lhs> ? rhs.derived() : rhs.Eval());
-
-    if constexpr (is_supported_vector<Lhs>) {
-      return SpmvImpl(lhsEval, rhsEval);
+    if constexpr (is_supported_vector<Lhs> || is_supported_vector<Rhs>) {
+      return SpmvImpl(derived(), rhs.derived());
     }
     if constexpr (traits<Lhs>::storage == Dense &&
                   traits<Rhs>::storage == Dense) {
-      return DenseDenseMatMulImpl(lhsEval, rhsEval);
-    } else if (traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense) {
-      // if one of the matrix is a dense matrix then life is easier
+      return DenseDenseMatMulImpl(derived(), rhs.derived());
+    } else if constexpr (traits<Lhs>::storage == Dense ||
+                         traits<Rhs>::storage == Dense) {
       // TODO: implement this in future updates
     } else {
-      if constexpr (major != traits<Rhs>::major)
-        rhsEval = rhsEval.Transpose();
-      return SparseSparseMatMulImpl(lhsEval, rhsEval);
+      if constexpr (traits<Lhs>::major != traits<Rhs>::major)
+        return SparseSparseMatMulImpl(derived(), rhs.derived().Transposed());
+      return SparseSparseMatMulImpl(derived(), rhs.derived());
     }
   }
 
   UnaryExpr<Lhs> operator*(Real coeff) const;
-
   UnaryExpr<Lhs> operator-() const;
-
   template <typename Rhs> AddExpr<Lhs, Rhs> operator+(const Rhs &rhs) const;
-
   template <typename Rhs> SubExpr<Lhs, Rhs> operator-(const Rhs &rhs) const;
-
-  template <typename Rhs> Lhs &operator+=(const Rhs &rhs) const;
-
-  template <typename Rhs> Lhs &operator-=(const Rhs &rhs) const;
-
-  template <typename Rhs> Lhs &operator*=(const Rhs &rhs) const;
+  template <typename Rhs> Lhs &operator+=(const Rhs &rhs);
+  template <typename Rhs> Lhs &operator-=(const Rhs &rhs);
+  template <typename Rhs> Lhs &operator*=(const Rhs &rhs);
 
   Real operator[](uint i) const { return derived().operator[](i); }
 

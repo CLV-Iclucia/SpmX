@@ -7,7 +7,7 @@
 
 #include <sparse-matrix.h>
 #include <spmx-utils.h>
-
+#include <expressions.h>
 namespace spmx {
 
 // TODO: classical iterative solvers
@@ -61,7 +61,7 @@ public:
   template <StorageType VecStorage>
   void SolveImpl(const SparseMatrixBase<Derived> &A,
                  const Vector<VecStorage> &b, Vector<Dense> &x) const {
-    x.RandFill();
+    RandFill(x);
   }
 };
 
@@ -94,22 +94,22 @@ public:
   template <typename MatDerived, StorageType VecStorage>
   void SolveImpl(const SparseMatrixBase<MatDerived> &A,
                  const Vector<VecStorage> &b, Vector<Dense> &x) const {
-    x.RandFill();
+    RandFill(x);
     if constexpr (std::is_same_v<Preconditioner, void>) {
       Vector<Dense> r(b - A * x);
       Vector<Dense> p(r);
       Vector<Dense> Ap(A * p);
-      Real r_norm_sqr = r.L2NormSqr();
+      Real r_norm_sqr = L2NormSqr(r);
       for (total_rounds_ = 1; max_rounds_ < 0 || total_rounds_ < max_rounds_;
            total_rounds_++) {
-        Real alpha = r_norm_sqr / p.dot(Ap);
-        x.Saxpy(p, alpha);
-        if (std::abs(alpha) * p.L1Norm() < eps_)
+        Real alpha = r_norm_sqr / dot(p, Ap);
+        x += p * alpha;
+        if (std::abs(alpha) * L1Norm(p) < eps_)
           return;
-        r.Saxpy(Ap, -alpha);
-        Real beta = r.L2NormSqr() / r_norm_sqr;
-        p.ScaleAdd(r, beta);
-        r_norm_sqr = r.L2NormSqr();
+        r -= alpha * Ap;
+        Real beta = L2NormSqr(r) / r_norm_sqr;
+        p = r + beta * p;
+        r_norm_sqr = L2NormSqr(r);
         Ap = A * p;
       }
       status_ = NotConverge;

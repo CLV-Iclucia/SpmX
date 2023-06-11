@@ -7,7 +7,6 @@
 
 #include <cmath>
 #include <my-stl.h>
-#include <spmx-types.h>
 #include <type-utils.h>
 namespace spmx {
 
@@ -31,7 +30,24 @@ inline ProdRet<Lhs, Rhs> DenseDenseMatMulImpl(const Lhs &lhsEval,
     }
   }
   return ret;
-  return ret;
+}
+
+template <typename LhsInnerIterator, typename RhsInnerIterator>
+Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
+                              RhsInnerIterator &rhs_it) {
+  Real sum = 0.0;
+  while (lhs_it() && rhs_it()) {
+    if (lhs_it.Inner() < rhs_it.Inner())
+      ++lhs_it;
+    else if (lhs_it.Inner() > rhs_it.Inner())
+      ++rhs_it;
+    else {
+      sum += lhs_it.value() * rhs_it.value();
+      ++lhs_it;
+      ++rhs_it;
+    }
+  }
+  return sum;
 }
 
 /**
@@ -55,34 +71,23 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
   }
   constexpr uint option = ((traits<Lhs>::storage == Sparse) << 2) |
                           ((traits<Lhs>::major == RowMajor) << 1) |
-                          (traits<Rhs>::major == Dense);
+                          (traits<Rhs>::storage == Dense);
   if constexpr (traits<Lhs>::storage == Sparse) {
     if constexpr (traits<Lhs>::major == RowMajor) {
       if constexpr (traits<Rhs>::storage == Dense) {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
-        for (int i = 0; i < lhsEval.OuterDim(); i++) {
-          for (typename Lhs::NonZeroIterator it(lhsEval, i); it(); ++it) {
+        for (uint i = 0; i < lhsEval.OuterDim(); i++) {
+          for (typename Lhs::InnerIterator it(lhsEval, i); it(); ++it) {
             ret(i) += it.value() * rhsEval(it.Inner());
           }
         }
         return ret;
       } else {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols(), rhsEval.Cols());
-        for (int i = 0; i < lhsEval.OuterDim(); i++) {
+        for (uint i = 0; i < lhsEval.OuterDim(); i++) {
           typename Lhs::InnerIterator lhs_it(lhsEval, i);
           typename Rhs::NonZeroIterator rhs_it(rhsEval);
-          Real sum = 0.0;
-          while (lhs_it() && rhs_it()) {
-            if (lhs_it.Inner() < rhs_it.Inner())
-              ++lhs_it;
-            else if (lhs_it.Inner() > rhs_it.Inner())
-              ++rhs_it;
-            else {
-              sum += lhs_it.value() * rhs_it.value();
-              ++lhs_it;
-              ++rhs_it;
-            }
-          }
+          Real sum = SparseSparseVectorDotKernel(lhs_it, rhs_it);
           uint nnz = 0;
           if (!iszero(sum)) {
             ret.Innert(nnz) = i;
@@ -120,7 +125,7 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
           }
         }
         std::sort(idx_bucket.Data(), idx_bucket.Data() + nnz);
-        for (int j = 0; j < nnz; j++) {
+        for (uint j = 0; j < nnz; j++) {
           ret.InnerIdx(j) = idx_bucket[j];
           ret.Data(j) = extended[idx_bucket[j]];
         }
@@ -130,15 +135,15 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
     if constexpr (traits<Lhs>::major == RowMajor) {
       if constexpr (traits<Rhs>::storage == Dense) {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
-        for (int i = 0; i < lhsEval.OuterDim(); i++) {
-          for (int j = 0; j < lhsEval.InnerDim(); j++) {
+        for (uint i = 0; i < lhsEval.OuterDim(); i++) {
+          for (uint j = 0; j < lhsEval.InnerDim(); j++) {
             ret(i) += lhsEval.AccessByMajor(i, j) * rhsEval(j);
           }
         }
         return ret;
       } else {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
-        for (int i = 0; i < lhsEval.OuterDim(); i++) {
+        for (uint i = 0; i < lhsEval.OuterDim(); i++) {
           for (typename Rhs::NonZeroIterator it(rhsEval); it(); ++it) {
             ret(i) += lhsEval.AccessByMajor(i, it.Inner()) * it.value();
           }
@@ -148,8 +153,8 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
     } else {
       if constexpr (traits<Rhs>::storage == Dense) {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
-        for (int i = 0; i < lhsEval.OuterDim(); i++) {
-          for (int j = 0; j < lhsEval.InnerDim(); j++) {
+        for (uint i = 0; i < lhsEval.OuterDim(); i++) {
+          for (uint j = 0; j < lhsEval.InnerDim(); j++) {
             ret.AccessByMajor(j) += lhsEval.AccessByMajor(i, j) * rhsEval(i);
           }
         }
@@ -172,8 +177,7 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
 template <typename Lhs, typename Rhs>
 inline ProdRet<Lhs, Rhs> SparseSparseMatMulImpl(const Lhs &lhsEval,
                                                 const Rhs &rhsEval) {
-  static_assert(is_spm_v<Lhs> && is_spm_v<Rhs> &&
-                traits<Lhs>::storage == Sparse &&
+  static_assert(traits<Lhs>::storage == Sparse &&
                 traits<Rhs>::storage == Sparse &&
                 traits<Lhs>::major == traits<Rhs>::major);
   ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols(),
@@ -183,7 +187,7 @@ inline ProdRet<Lhs, Rhs> SparseSparseMatMulImpl(const Lhs &lhsEval,
   Array<Real> extended(rhsEval.Cols());
   ret.OuterIdx(0) = 0;
   // estimate the number of non-zero elements of the result
-  for (uint i = 0; i < lhsEval.OuterDim; i++) {
+  for (uint i = 0; i < lhsEval.OuterDim(); i++) {
     uint nnz = 0;
     // 1. calc the result of an inner vector in extended form
     for (typename Lhs::InnerIterator lhs_it(lhsEval, i); lhs_it(); ++lhs_it) {
@@ -200,7 +204,7 @@ inline ProdRet<Lhs, Rhs> SparseSparseMatMulImpl(const Lhs &lhsEval,
     // inner_idx_[outer_idx[i]:outer_idx[i+1]], now we need to sort them
     // 2. write back
     std::sort(idx_bucket.Data(), idx_bucket.Data() + nnz);
-    for (int j = 0; j < nnz; j++) {
+    for (uint j = 0; j < nnz; j++) {
       ret.InnerIdx(ret.OuterIdx(i) + j) = idx_bucket[j];
       ret.Data(ret.OuterIdx(i) + j) = extended[idx_bucket[j]];
       extended[idx_bucket[j]] = 0;
