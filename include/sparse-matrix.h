@@ -257,7 +257,8 @@ public:
    * @param spm
    */
   template <typename OtherDerived>
-  explicit SparseMatrix(const OtherDerived &spm) {
+  explicit SparseMatrix(const SparseMatrixBase<OtherDerived> &other) {
+    const OtherDerived &spm = other.derived();
     assert((!nRows || nRows == spm.Rows()) && (!nCols || nCols == spm.Cols()));
     SetShape(spm.Rows(), spm.Cols());
     if constexpr (storageType == Dense) { // dense mat/vec
@@ -472,7 +473,8 @@ public:
 
   // Only allowed for dense vector. Constructor for an n-dim dense vector
   explicit SparseMatrix(uint n) {
-    static_assert(storageType == Dense && is_supported_vector<SparseMatrix>);
+    static_assert(storageType == Dense && is_supported_vector<SparseMatrix> &&
+                  !is_fixed_shape_v<SparseMatrix>);
     data_ = new Real[n];
     if constexpr (nRows == 1)
       n_cols_ = n;
@@ -510,7 +512,6 @@ public:
         SetShape(m, n);
         Real *new_data = new Real[m * n];
         memcpy(new_data, data_, sizeof(Real) * dim);
-        memset(new_data + dim, 0, sizeof(Real) * (m * n - dim));
         delete[] data_;
         data_ = new_data;
       }
@@ -691,8 +692,15 @@ public:
 
   class NonZeroIterator {
   public:
-    explicit NonZeroIterator(const SparseMatrix &spm)
-        : storage_(spm.Storage()) {
+    explicit NonZeroIterator(const SparseMatrix &spm) {
+      if constexpr (traits<SparseMatrix>::storage == Sparse) {
+        inner_ = spm.storage_.InnerIndices();
+        data_ = spm.storage_.Datas();
+        nnz_ = spm.nnz_;
+      } else {
+        data_ = spm.data_;
+        nnz_ = spm.Dim();
+      }
       if constexpr (!is_supported_vector<SparseMatrix>) {
         outer_idx_ = spm.OuterIndices();
         while (outer_idx_[outer_ptr_ + 1] == 0)
@@ -713,12 +721,12 @@ public:
     }
 
     uint Outer() const { return outer_ptr_; }
-    uint Inner() const { return storage_.InnerIdx(inner_ptr_); }
-    Real value() const { return storage_.Data(inner_ptr_); }
-    bool operator()() const { return inner_ptr_ < storage_.UsedSize(); }
+    uint Inner() const { return inner_[inner_ptr_]; }
+    Real value() const { return data_[inner_ptr_]; }
+    bool operator()() const { return inner_ptr_ < nnz_; }
     [[maybe_unused]] NonZeroIterator &operator++() {
       inner_ptr_++;
-      if constexpr (is_spm_v<SparseMatrix>) {
+      if constexpr (!is_supported_vector<SparseMatrix>) {
         while (inner_ptr_ >= outer_idx_[outer_ptr_ + 1])
           outer_ptr_++;
       }
@@ -727,13 +735,13 @@ public:
 
   private:
     uint inner_ptr_ = 0, outer_ptr_ = 0;
+    uint nnz_ = 0;
     uint *outer_idx_ = nullptr;
-    const SparseStorage &storage_;
+    uint *inner_ = nullptr;
+    Real *data_ = nullptr;
   };
 
-  bool IsSquare() const {
-    return Rows() == Cols();
-  }
+  bool IsSquare() const { return Rows() == Cols(); }
 
   friend std::ostream &operator<<(std::ostream &o, const SparseMatrix &spm) {
     NonZeroIterator it(spm);

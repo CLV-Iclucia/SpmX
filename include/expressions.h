@@ -47,6 +47,7 @@ public:
     }
   }
 
+  bool IsSquare() const { return rhs_.IsSquare(); }
   class InnerIterator {
   public:
     explicit InnerIterator(const Expr &expr, uint i)
@@ -200,6 +201,7 @@ public:
     RhsIter rhs_it_;
   };
 
+  bool IsSquare() const { return rhs_.IsSquare(); }
   RetType Eval() const {
     static_assert(
         traits<Lhs>::storage == traits<Rhs>::storage,

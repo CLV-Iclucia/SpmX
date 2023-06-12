@@ -37,13 +37,16 @@ static constexpr bool is_same_shape_v = SameShape<Lhs, Rhs>::value;
 template <typename Lhs, typename Rhs> struct ProductReturnType {
   static_assert(!traits<Lhs>::nCols || !traits<Rhs>::nRows ||
                 traits<Lhs>::nCols == traits<Rhs>::nRows);
-  using type = SparseMatrix<
-      traits<Lhs>::nRows, traits<Rhs>::nCols,
-      traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense ? Dense
-                                                                     : Sparse,
-      traits<Lhs>::major == Symmetric && traits<Lhs>::major == Symmetric
-          ? Symmetric
-          : traits<Lhs>::major>;
+  using type = std::conditional_t<
+      traits<Lhs>::nRows == 1 && traits<Rhs>::nCols == 1, Real,
+      SparseMatrix<
+          traits<Lhs>::nRows, traits<Rhs>::nCols,
+          traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense
+              ? Dense
+              : Sparse,
+          traits<Lhs>::major == Symmetric && traits<Lhs>::major == Symmetric
+              ? Symmetric
+              : traits<Lhs>::major>>;
 };
 
 template <typename Lhs, typename Rhs> struct SumReturnType {
@@ -133,6 +136,14 @@ template <typename T, StorageMajor major_> struct is_supported_vector_of_major {
 template <typename T, StorageMajor major_>
 static constexpr bool is_supported_vector_of_major_v =
     is_supported_vector_of_major<T, major_>::value;
+
+template <typename Derived> struct IsFixedShape {
+  static constexpr bool value = traits<remove_all_t<Derived>>::nRows &&
+                                traits<remove_all_t<Derived>>::nCols;
+};
+
+template <typename Derived>
+static constexpr bool is_fixed_shape_v = IsFixedShape<Derived>::value;
 } // namespace spmx
 
 // namespace spmx

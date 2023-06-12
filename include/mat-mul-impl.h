@@ -33,7 +33,7 @@ inline ProdRet<Lhs, Rhs> DenseDenseMatMulImpl(const Lhs &lhsEval,
 }
 
 template <typename LhsInnerIterator, typename RhsInnerIterator>
-Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
+inline Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
                               RhsInnerIterator &rhs_it) {
   Real sum = 0.0;
   while (lhs_it() && rhs_it()) {
@@ -51,11 +51,10 @@ Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
 }
 
 /**
- * In total, there are 16 cases.
- * RowVector(Sparse/Dense) * Matrix(Sparse/Dense, Col/Row)
- * Matrix(Sparse/Dense, Col/Row) * ColVector(Sparse/Dense)
- * the former case can be reduced to
- * (Matrix(Sparse/Dense, Col/Row)^T * RowVector^T(Sparse/Dense))^T
+ * Here we process matrix * vector and ignores the whether the vector is col-vector or row-vector
+ * So the cases are
+ * Matrix(Sparse/Dense, Col/Row) * Vector(Sparse/Dense)
+ * for vector we always call its NonZeroIterator
  * So we can focus one the latter
  * @tparam Lhs
  * @tparam Rhs
@@ -66,9 +65,6 @@ Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
 template <typename Lhs, typename Rhs>
 inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
   static_assert(is_supported_vector<Lhs> || is_supported_vector<Rhs>);
-  if constexpr (!is_supported_vector<Rhs>) {
-    return SpmvImpl(rhsEval.Transposed(), lhsEval.Transposed()).Transpose();
-  }
   constexpr uint option = ((traits<Lhs>::storage == Sparse) << 2) |
                           ((traits<Lhs>::major == RowMajor) << 1) |
                           (traits<Rhs>::storage == Dense);

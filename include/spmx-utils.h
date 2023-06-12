@@ -9,6 +9,7 @@
 #include <random>
 #include <spmx-types.h>
 #include <type_traits>
+#include <type-utils.h>
 
 namespace spmx {
 template <typename T> inline bool SimZero(T x) {
@@ -95,7 +96,30 @@ template <typename Vec> inline Real L1Norm(const Vec &v) {
 }
 
 template <typename Lhs, typename Rhs> inline Real Dot(const Lhs& lhs, const Rhs& rhs) {
+  static_assert(is_supported_vector<Lhs> && is_supported_vector<Rhs>);
+  if constexpr (traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense) {
 
+    // the following code can also be used
+//    for (uint i = 0; i < lhs.Dim(); i++) {
+//      sum += lhs(i) * rhs(i);
+//    }
+    Real sum = 0;
+    if constexpr (traits<Lhs>::storage == Dense) {
+      for (typename Lhs::NonZeroIterator it(lhs); it(); ++it) {
+        sum += it.value() * rhs(it.Inner());
+      }
+      return sum;
+    } else {
+      for (typename Lhs::NonZeroIterator it(rhs); it(); ++it) {
+        sum += it.value() * lhs(it.Inner());
+      }
+      return sum;
+    }
+  } else if constexpr (traits<Lhs>::storage == Sparse && traits<Rhs>::storage == Sparse) {
+    typename Lhs::NonZeroIterator lhs_it(lhs);
+    typename Rhs::NonZeroIterator rhs_it(rhs);
+    return SparseSparseVectorDotKernel(lhs_it, rhs_it);
+  }
 }
 
 } // namespace spmx

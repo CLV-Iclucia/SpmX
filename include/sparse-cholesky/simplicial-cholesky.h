@@ -21,9 +21,20 @@ public:
                 "matrix has to be declared explicitly as sparse and symmetric");
   const Derived &derived() const { return *static_cast<Derived *>(this); }
   Derived &derived() { return *static_cast<Derived *>(this); }
-  void Analyse(const MatType &A) { derived().Analyse(A); }
-  void Factorize(const MatType &A) { derived().Factorize(A); }
-  void Compute(const MatType &A) {
+  template <typename GeneralMatType>
+  void Analyse(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+                  traits<MatType>::storage == Sparse);
+    derived().Analyse(A);
+  }
+  template <typename GeneralMatType>
+  void Factorize(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+                  traits<MatType>::storage == Sparse);
+    derived().Factorize(A);
+  }
+  template <typename GeneralMatType>
+  void Compute(const GeneralMatType &A) {
     derived().Analyse(A);
     if (status_ != Success)
       return;
@@ -39,8 +50,6 @@ protected:
 };
 
 /**
- * This has a defect - for a sparse matrix, there is no difference in CSR and
- * CSC But we treat them as two different types
  * @tparam MatType to use the SimplicialCholesky solver, the matrix type must
  * implement an InnerIterator to iterate a inner dim
  * @tparam LDLT can be true of false, indicating whether to do a LDLT
@@ -53,7 +62,10 @@ class SimplicialCholesky
   static constexpr uint Size = traits<SolverType>::Size;
 
 protected:
-  void BuildEtreeFromMat(const MatType &A) {
+  template <typename GeneralMatType>
+  void BuildEtreeFromMat(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+                  traits<MatType>::storage == Sparse);
     Array<int> anc(A.Rows());
     anc.Fill(-1);
     for (uint i = 1; i < A.Rows(); i++) {
@@ -96,7 +108,10 @@ protected:
     nnz_cnt_ = new uint[size];
     }
   }
-  void InitSolver(const MatType &A) {
+  template <typename GeneralMatType>
+  void InitSolver(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+                  traits<MatType>::storage == Sparse);
     if (!A.IsSquare()) {
       std::cerr << "Error: solvers can only apply on square matrices"
                 << std::endl;
@@ -128,7 +143,8 @@ public:
    * just make one call to Analyze
    * @param A
    */
-  void Analyse(const MatType &A) {
+  template <typename GeneralMatType>
+  void Analyse(const GeneralMatType &A) {
     InitSolver(A);
     if (status_ == InvalidInput)
       return;
@@ -138,7 +154,8 @@ public:
    * Since A is symmetric, we can safely accessing it in any major.
    * @param A
    */
-  void Factorize(const MatType &A) {
+  template <typename GeneralMatType>
+  void Factorize(const GeneralMatType &A) {
     Array<Real> sum(size_);
     Array<uint> mask(size_);
     Array<uint> row_sparsity_pattern(size_);

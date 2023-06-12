@@ -102,7 +102,7 @@ public:
       Real r_norm_sqr = L2NormSqr(r);
       for (total_rounds_ = 1; max_rounds_ < 0 || total_rounds_ < max_rounds_;
            total_rounds_++) {
-        Real alpha = r_norm_sqr / dot(p, Ap);
+        Real alpha = r_norm_sqr / Dot(p, Ap);
         x += p * alpha;
         if (std::abs(alpha) * L1Norm(p) < eps_)
           return;

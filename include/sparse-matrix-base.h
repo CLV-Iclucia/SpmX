@@ -75,7 +75,14 @@ public:
                   "designed specifically for sparse matrices. More support for "
                   "dense matrices will be provided in future updates");
     if constexpr (is_supported_vector<Lhs> || is_supported_vector<Rhs>) {
-      return SpmvImpl(derived(), rhs.derived());
+      if constexpr (is_supported_vector_of_major_v<Lhs, RowMajor> && is_supported_vector_of_major_v<Rhs, ColMajor>)
+        return Dot(*this, rhs);
+      if constexpr (is_supported_vector_of_major_v<Rhs, ColMajor>)
+        return SpmvImpl(derived(), rhs.derived());
+      else if constexpr (is_supported_vector_of_major_v<Lhs, RowMajor>)
+        return SpmvImpl(rhs.derived(), derived());
+      else if constexpr (is_supported_vector_of_major_v<Lhs, ColMajor> && is_supported_vector_of_major_v<Rhs, RowMajor>)
+        return TensorProduct(*this, rhs);
     }
     if constexpr (traits<Lhs>::storage == Dense &&
                   traits<Rhs>::storage == Dense) {

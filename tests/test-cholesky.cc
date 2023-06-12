@@ -1,7 +1,8 @@
 //
 // Created by creeper on 23-6-7.
 //
-#include <sparse-cholesky/simplicial-llt.h>
+#include <expressions.h>
+#include <sparse-cholesky/simplicial-cholesky.h>
 using namespace spmx;
 
 const uint TEST_LIN = 1u << 0;
@@ -41,7 +42,7 @@ void TestSolve() {
     SparseMatrix<0, 0, Sparse, Symmetric> mat(n, n);
     mat.SetFromTriplets(tList, tList + nnz);
     SimplicialLLT<SparseMatrix<0, 0, Sparse, Symmetric>> solver;
-    solver.Compute(mat);
+    solver.Compute(2 * mat);
     if (solver.info() != Success) {
       std::printf("Computing failed.\n");
       continue;

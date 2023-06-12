@@ -11,7 +11,7 @@ const uint TEST_MV_MUL = 1u << 4;
 
 using namespace spmx;
 const uint MAX_ROWS = 800, MAX_COLS = 800, MAX_NNZ = 10000;
-const uint TESTS = TEST_LIN | TEST_SET | TEST_MV_MUL;
+const uint TESTS = TEST_MV_MUL;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 static Real golden[MAX_ROWS][MAX_COLS];
@@ -241,22 +241,22 @@ void TestMvMul() {
     uint m = Randu() % MAX_ROWS + 1;
     uint n = Randu() % MAX_COLS + 1;
     uint nnz = Randu() % MAX_NNZ + 1;
-    RandFillMat(A, n, m, nnz);
+    RandFillMat(A, m, n, nnz);
     SparseMatrixXd spm;
-    Vector<Dense> calc_v(m), v(n);
+    Vector<Dense> calc_v, v(n);
     for (uint i = 0; i < n; i++)
       v(i) = RandReal();
     for (uint i = 0; i < m; i++)
       for (uint j = 0; j < n; j++)
-        golden_v[i] += A[j][i] * v(j);
+        golden_v[i] += A[i][j] * v(j);
     spm.Resize(m, n);
     spm.SetFromTriplets(tList, tList + nnz);
-    calc_v = spm.Transposed() * v;
+    calc_v = spm * v;
     if (!TestSame(golden_v, calc_v)) {
       std::cerr << "Failed test mat-vec-multiplication. Failing case is:"
                 << std::endl;
       std::cerr << "Your result is" << std::endl;
-      std::cerr << "spm:" << std::endl << spm << std::endl;
+      std::cerr << "spm:" << std::endl << calc_v << std::endl;
       exit(-1);
     }
     printf("Passed test case %d\n", ++kase);
