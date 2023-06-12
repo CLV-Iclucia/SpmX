@@ -5,62 +5,44 @@
 #ifndef SPMX_ITERATIVE_SOLVERS_H
 #define SPMX_ITERATIVE_SOLVERS_H
 
+#include <csignal>
+#include <expressions.h>
 #include <sparse-matrix.h>
 #include <spmx-utils.h>
-#include <expressions.h>
 namespace spmx {
 
 // TODO: classical iterative solvers
-template <typename Derived> class FactorizeSolver {
-public:
-  using typename traits<Derived>::MatDerived;
-  SolverStatus info() const { return status_; }
-  Derived *derived() const { return static_cast<Derived *>(this); }
-  void Compute(const SparseMatrixBase<MatDerived> &A) {
-    derived()->ComputeImpl(A);
-  };
-
-  template <StorageType VecStorage>
-  void Solve(const SparseMatrixBase<MatDerived> &A, const Vector<VecStorage> &b,
-             Vector<Dense> &ret) const {
-    derived()->SolveImpl(A, b, ret);
-  };
-
-  template <StorageType VecStorage>
-  Vector<Dense> Solve(const SparseMatrixBase<MatDerived> &A,
-                      const Vector<VecStorage> &b) const {
-    Vector<Dense> ret(b.Dim());
-    derived()->SolveImpl(A, b, ret);
-    return ret;
-  };
-
-protected:
-  SolverStatus status_ = Undefined;
-};
-
 template <typename Derived> class IterativeSolverBase {
 public:
-  using traits<Derived>::MatDerived;
   SolverStatus info() const { return status_; }
   void SetMaxRounds(int max_rounds) { max_rounds_ = max_rounds; }
   void SetPrecision(Real eps) { eps_ = eps; }
   uint MaxRounds() const { return max_rounds_; }
   Real Precision() const { return eps_; }
   uint Rounds() const { return total_rounds_; }
+  const Derived &derived() const { return *static_cast<Derived *>(this); }
+  Derived &derived() { return *static_cast<Derived *>(this); };
+  template <typename GeneralMatType>
+  Vector<Dense> Solve(const GeneralMatType &A,
+                      const Vector<Dense> &b) {
+    Vector<Dense> ret(b.Dim());
+    derived().Solve(A, b, ret);
+    return ret;
+  }
 
 protected:
   SolverStatus status_ = Undefined;
   int max_rounds_ = -1; ///< -1 stands for iterate until convergence
   uint total_rounds_ = 0;
-  Real eps_ = 1e-10;
+  Real eps_ = 1e-5;
 };
 
 template <typename Derived>
 class JacobiSolver final : public IterativeSolverBase<JacobiSolver<Derived>> {
 public:
   template <StorageType VecStorage>
-  void SolveImpl(const SparseMatrixBase<Derived> &A,
-                 const Vector<VecStorage> &b, Vector<Dense> &x) const {
+  void Solve(const SparseMatrixBase<Derived> &A, const Vector<VecStorage> &b,
+             Vector<Dense> &x) const {
     RandFill(x);
   }
 };
@@ -70,16 +52,16 @@ class GaussSeidelSolver final
     : public IterativeSolverBase<GaussSeidelSolver<Derived>> {
 public:
   template <StorageType VecStorage>
-  void SolveImpl(const SparseMatrixBase<Derived> &A,
-                 const Vector<VecStorage> &b, Vector<Dense> &ret) const {}
+  void Solve(const SparseMatrixBase<Derived> &A, const Vector<VecStorage> &b,
+             Vector<Dense> &ret) const {}
 };
 
 template <typename Derived>
 class SorSolver final : public IterativeSolverBase<SorSolver<Derived>> {
 public:
   template <StorageType VecStorage>
-  void SolveImpl(const SparseMatrixBase<Derived> &A,
-                 const Vector<VecStorage> &b, Vector<Dense> &ret) const {}
+  void Solve(const SparseMatrixBase<Derived> &A, const Vector<VecStorage> &b,
+             Vector<Dense> &ret) const {}
   Real Omega() const { return omega_; }
   void SetOmega(Real omega) { omega_ = omega; }
 
@@ -87,29 +69,54 @@ private:
   Real omega_ = 1.0;
 };
 
-template <typename Derived, typename Preconditioner>
+template <typename MatType, typename Preconditioner = void>
 class ConjugateGradientSolver final
-    : public IterativeSolverBase<ConjugateGradientSolver<Derived, Preconditioner>> {
+    : public IterativeSolverBase<
+          ConjugateGradientSolver<MatType, Preconditioner>> {
+  static_assert(traits<MatType>::major == Symmetric &&
+                    traits<MatType>::storage == Sparse,
+                "Error: to use the sparse cholesky factorization solver, the "
+                "matrix has to be declared explicitly as sparse and symmetric");
+  static constexpr uint Size = traits<MatType>::nRows | traits<MatType>::nCols;
+  using Base =
+      IterativeSolverBase<ConjugateGradientSolver<MatType, Preconditioner>>;
+
 public:
-  template <typename MatDerived, StorageType VecStorage>
-  void SolveImpl(const SparseMatrixBase<MatDerived> &A,
-                 const Vector<VecStorage> &b, Vector<Dense> &x) const {
-    RandFill(x);
+  using Base::Solve;
+  using Base::SetMaxRounds;
+  using Base::SetPrecision;
+  template <typename GeneralMatType>
+  void Solve(const GeneralMatType &A, const Vector<Dense> &b,
+             Vector<Dense> &x) {
+    static_assert(
+        traits<GeneralMatType>::major == Symmetric &&
+            traits<GeneralMatType>::storage == Sparse,
+        "Error: to use the conjugate gradient solver, the "
+        "matrix has to be declared explicitly as sparse and symmetric");
     if constexpr (std::is_same_v<Preconditioner, void>) {
-      Vector<Dense> r(b - A * x);
-      Vector<Dense> p(r);
-      Vector<Dense> Ap(A * p);
+      Vector<Dense, Size> r(b - A * x);
+      Vector<Dense, Size> p(r);
+      Vector<Dense, Size> Ap(A * p);
       Real r_norm_sqr = L2NormSqr(r);
-      for (total_rounds_ = 1; max_rounds_ < 0 || total_rounds_ < max_rounds_;
+      for (total_rounds_ = 1;
+           max_rounds_ < 0 || static_cast<int>(total_rounds_) < max_rounds_;
            total_rounds_++) {
-        Real alpha = r_norm_sqr / Dot(p, Ap);
-        x += p * alpha;
-        if (std::abs(alpha) * L1Norm(p) < eps_)
-          return;
+        Real pAp = Dot(p, Ap);
+        [[unlikely]] if (iszero(pAp)) {
+          status_ = Success;
+          return ;
+        }
+        Real alpha = r_norm_sqr / pAp;
+        x += alpha * p;
         r -= alpha * Ap;
-        Real beta = L2NormSqr(r) / r_norm_sqr;
+        if (L1Norm(r) < eps_) {
+          status_ = Success;
+          return ;
+        }
+        Real new_r_norm_sqr = L2NormSqr(r);
+        Real beta = new_r_norm_sqr / r_norm_sqr;
         p = r + beta * p;
-        r_norm_sqr = L2NormSqr(r);
+        r_norm_sqr = new_r_norm_sqr;
         Ap = A * p;
       }
       status_ = NotConverge;
@@ -119,26 +126,27 @@ public:
   }
 
 private:
-  using type = ConjugateGradientSolver<Derived, Preconditioner>;
-  using Base = IterativeSolverBase<type>;
+  using Base::eps_;
   using Base::max_rounds_;
+
   using Base::status_;
   using Base::total_rounds_;
-  using Base::eps_;
 };
 
-template<typename Derived_, typename Precond_> struct traits<ConjugateGradientSolver<Derived_, Precond_>> {
+template <typename Derived_, typename Precond_>
+struct traits<ConjugateGradientSolver<Derived_, Precond_>> {
   using MatDerived = Derived_;
 };
-template<typename Derived_> struct traits<JacobiSolver<Derived_>> {
+template <typename Derived_> struct traits<JacobiSolver<Derived_>> {
   using MatDerived = Derived_;
 };
 
-template<typename Derived_> struct traits<GaussSeidelSolver<Derived_>> {
+template <typename Derived_> struct traits<GaussSeidelSolver<Derived_>> {
   using MatDerived = Derived_;
 };
-template<typename Derived_> struct traits<SorSolver<Derived_>> {
+template <typename Derived_> struct traits<SorSolver<Derived_>> {
   using MatDerived = Derived_;
 };
+
 } // namespace spmx
 #endif // SPMX_ITERATIVE_SOLVERS_H

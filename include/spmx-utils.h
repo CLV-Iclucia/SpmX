@@ -8,8 +8,9 @@
 #include <climits>
 #include <random>
 #include <spmx-types.h>
-#include <type_traits>
 #include <type-utils.h>
+#include <type_traits>
+#include <cassert>
 
 namespace spmx {
 template <typename T> inline bool SimZero(T x) {
@@ -73,53 +74,48 @@ template <typename Vec> inline Real L2NormSqr(const Vec &v) {
 
 template <typename Vec> inline Real L2Norm(const Vec &v) {
   Real sum = 0;
-  if (traits<Vec>::storage == Sparse) {
-    for (typename Vec::NonZeroIterator it(v); it(); ++it)
-      sum += it.value() * it.value();
-  } else {
-    for (uint i = 0; i < v.Dim(); i++)
-      sum += v(i) * v(i);
-  }
+  for (typename Vec::NonZeroIterator it(v); it(); ++it)
+    sum += it.value() * it.value();
   return std::sqrt(sum);
 }
 
 template <typename Vec> inline Real L1Norm(const Vec &v) {
   Real sum = 0;
-  if (traits<Vec>::storage == Sparse) {
-    for (typename Vec::NonZeroIterator it(v); it(); ++it)
-      sum += std::abs(it.value());
-  } else {
-    for (uint i = 0; i < v.Dim(); i++)
-      sum += std::abs(v(i));
-  }
+  for (typename Vec::NonZeroIterator it(v); it(); ++it)
+    sum += std::abs(it.value());
   return sum;
 }
 
-template <typename Lhs, typename Rhs> inline Real Dot(const Lhs& lhs, const Rhs& rhs) {
+template <typename Lhs, typename Rhs>
+inline Real Dot(const Lhs &lhs, const Rhs &rhs) {
   static_assert(is_supported_vector<Lhs> && is_supported_vector<Rhs>);
-  if constexpr (traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense) {
-
-    // the following code can also be used
-//    for (uint i = 0; i < lhs.Dim(); i++) {
-//      sum += lhs(i) * rhs(i);
-//    }
+  if constexpr (traits<Lhs>::storage == Dense ||
+                traits<Rhs>::storage == Dense) {
     Real sum = 0;
+    // the following code can also be used
+    //    for (uint i = 0; i < lhs.Dim(); i++) {
+    //      sum += lhs(i) * rhs(i);
+    //    }
     if constexpr (traits<Lhs>::storage == Dense) {
-      for (typename Lhs::NonZeroIterator it(lhs); it(); ++it) {
-        sum += it.value() * rhs(it.Inner());
-      }
-      return sum;
-    } else {
       for (typename Lhs::NonZeroIterator it(rhs); it(); ++it) {
         sum += it.value() * lhs(it.Inner());
       }
-      return sum;
+    } else {
+      for (typename Lhs::NonZeroIterator it(lhs); it(); ++it)
+        sum += it.value() * rhs(it.Inner());
     }
-  } else if constexpr (traits<Lhs>::storage == Sparse && traits<Rhs>::storage == Sparse) {
+    return sum;
+  } else {
     typename Lhs::NonZeroIterator lhs_it(lhs);
     typename Rhs::NonZeroIterator rhs_it(rhs);
     return SparseSparseVectorDotKernel(lhs_it, rhs_it);
   }
+}
+
+template <typename Mat> inline void RandFill(Mat &spm) {
+  static_assert(is_spm_v<Mat>);
+  for (typename Mat::NonZeroIterator it(spm); it(); ++it)
+    it.value() = RandReal();
 }
 
 } // namespace spmx

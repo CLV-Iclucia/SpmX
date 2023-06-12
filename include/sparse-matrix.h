@@ -64,14 +64,15 @@ public:
   void SetShape(uint n_rows, uint n_cols) {
     assert((!nRows || nRows == n_rows) && (!nCols || nCols == n_cols));
     if constexpr (Major == Symmetric) {
-      if constexpr (nRows || nCols)
-        n_rows_ = n_cols_ = nRows | nCols;
+      if constexpr (nRows)
+        n_cols_ = nRows;
+      else if constexpr (nCols)
+        n_rows_ = nCols;
       else {
         assert(n_rows == n_cols);
         n_rows_ = n_rows;
         n_cols_ = n_cols;
       }
-      assert(n_rows_ == n_rows && n_cols_ == n_cols && n_rows == n_cols);
       return;
     }
     if constexpr (!nRows)
@@ -163,8 +164,12 @@ public:
       nnz_ = 0;
       if (Options & NoRepeat) {
         for (Iterator it = begin; it != end; it++) {
-          uint outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
-          uint inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
+          uint outer = (Major == RowMajor || Major == Symmetric)
+                           ? std::get<0>(*it)
+                           : std::get<1>(*it);
+          uint inner = (Major == RowMajor || Major == Symmetric)
+                           ? std::get<1>(*it)
+                           : std::get<0>(*it);
           while (outer >= outer_idx) {
             outer_idx_[outer_idx] = nnz_;
             outer_idx++;
@@ -177,10 +182,12 @@ public:
         uint cur_outer, cur_inner;
         Iterator it = begin;
         while (it != end) {
-          uint outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
-          uint inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
-          cur_outer = outer;
-          cur_inner = inner;
+          uint outer = (cur_outer = (Major == RowMajor || Major == Symmetric)
+                                       ? std::get<0>(*it)
+                                       : std::get<1>(*it));
+          uint inner = (cur_inner = (Major == RowMajor || Major == Symmetric)
+                                       ? std::get<1>(*it)
+                                       : std::get<0>(*it));
           while (outer >= outer_idx) {
             outer_idx_[outer_idx] = nnz_;
             outer_idx++;
@@ -191,15 +198,16 @@ public:
             it++;
             if (it == end)
               break;
-            outer = Major == RowMajor ? std::get<0>(*it) : std::get<1>(*it);
-            inner = Major == RowMajor ? std::get<1>(*it) : std::get<0>(*it);
+            outer = Major == RowMajor || Major == Symmetric ? std::get<0>(*it)
+                                                            : std::get<1>(*it);
+            inner = Major == RowMajor || Major == Symmetric ? std::get<1>(*it)
+                                                            : std::get<0>(*it);
           }
           nnz_++;
         }
       }
       storage_.SetUsed(nnz_);
-      for (uint i = outer_idx; i <= OuterDim(); i++)
-        outer_idx_[i] = nnz_;
+      outer_idx_[OuterDim()] = nnz_;
     }
   }
 
@@ -263,12 +271,10 @@ public:
     SetShape(spm.Rows(), spm.Cols());
     if constexpr (storageType == Dense) { // dense mat/vec
       CastToDense(spm);
-      return;
-    }
-    if constexpr (is_supported_vector<SparseMatrix>) { // sparse vec
-      typename OtherDerived::NonZeroIterator it(spm);
-      storage_.Reserve(spm.NonZeroEst());
-      if (traits<OtherDerived>::storage == Sparse) {
+    } else if constexpr (is_supported_vector<SparseMatrix>) { // sparse vec
+      if constexpr (traits<OtherDerived>::storage == Sparse) {
+        typename OtherDerived::NonZeroIterator it(spm);
+        storage_.Reserve(spm.NonZeroEst());
         SetStorageByIterator<false>(it);
       } else {
         for (int i = 0; i < spm.Dim(); i++) {
@@ -279,44 +285,45 @@ public:
         }
         storage_.SetUsed(nnz_);
       }
-      return;
-    }
-    static_assert(traits<OtherDerived>::storage == Sparse,
-                  "Error: current version do not support casting from dense "
-                  "matrix to sparse matrix");
-    if constexpr (is_same_major<SparseMatrix,
-                                OtherDerived>) { // sparse, same major
+    } else {
+      static_assert(traits<OtherDerived>::storage == Sparse,
+                    "Error: current version do not support casting from dense "
+                    "matrix to sparse matrix");
+      if constexpr (is_same_major<SparseMatrix,
+                                  OtherDerived>) { // sparse, same major
 #ifdef MEMORY_TRACING
-      outer_idx_used = spm.OuterDim() + 1;
-      MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
+        outer_idx_used = spm.OuterDim() + 1;
+        MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
 #endif
-      outer_idx_ = new uint[spm.OuterDim() + 1];
-      typename OtherDerived::NonZeroIterator it(spm);
-      storage_.Reserve(spm.NonZeroEst());
-      SetByIterator(it);
-    } else if constexpr (Major != traits<OtherDerived>::StorageMajor) {
-      uint outer_dim = OuterDim(), inner_dim = InnerDim();
+        outer_idx_ = new uint[spm.OuterDim() + 1];
+        typename OtherDerived::NonZeroIterator it(spm);
+        storage_.Reserve(spm.NonZeroEst());
+        SetByIterator(it);
+      } else if constexpr (Major != traits<OtherDerived>::StorageMajor) {
+        uint outer_dim = OuterDim(), inner_dim = InnerDim();
 #ifdef MEMORY_TRACING
-      outer_idx_used = outer_dim + 1;
-      MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
+        outer_idx_used = outer_dim + 1;
+        MEMORY_LOG_ALLOC(SparseMatrix, outer_idx_used);
 #endif
-      outer_idx_ = new uint[outer_dim + 1];
-      Array<uint> bucket(outer_dim);
-      storage_.Reserve(nnz_);
-      memset(outer_idx_, 0, sizeof(uint) * (outer_dim + 1));
-      bucket.Fill(0);
-      for (typename OtherDerived::NonZeroIterator it(spm); it(); ++it)
-        OuterIdx(it.InnerIdx())++;
-      for (uint i = 1; i <= inner_dim; i++)
-        OuterIdx(i) += OuterIdx(i - 1);
-      for (uint i = 0; i < outer_dim; i++) {
-        uint cnt = 0;
-        for (typename OtherDerived::InnerIterator it(spm, i); it();
-             ++it, cnt++) {
-          uint idx = OuterIdx(it.Inner()) + bucket(InnerIdx(cnt + OuterIdx(i)));
-          InnerIdx(idx) = i;
-          Data(idx) = it.value();
-          bucket[it.Inner()]++;
+        outer_idx_ = new uint[outer_dim + 1];
+        Array<uint> bucket(outer_dim);
+        storage_.Reserve(nnz_);
+        memset(outer_idx_, 0, sizeof(uint) * (outer_dim + 1));
+        bucket.Fill(0);
+        for (typename OtherDerived::NonZeroIterator it(spm); it(); ++it)
+          OuterIdx(it.InnerIdx())++;
+        for (uint i = 1; i <= inner_dim; i++)
+          OuterIdx(i) += OuterIdx(i - 1);
+        for (uint i = 0; i < outer_dim; i++) {
+          uint cnt = 0;
+          for (typename OtherDerived::InnerIterator it(spm, i); it();
+               ++it, cnt++) {
+            uint idx =
+                OuterIdx(it.Inner()) + bucket(InnerIdx(cnt + OuterIdx(i)));
+            InnerIdx(idx) = i;
+            Data(idx) = it.value();
+            bucket[it.Inner()]++;
+          }
         }
       }
     }
@@ -595,7 +602,7 @@ public:
       int idx = IndexAt(i, j);
       return idx < 0 ? 0 : Storage().Data(static_cast<uint>(i));
     } else {
-      if constexpr (Major == RowMajor)
+      if constexpr (Major == RowMajor || Major == Symmetric)
         return data_[i * Rows() + j];
       else
         return data_[j * Cols() + i];
@@ -612,7 +619,7 @@ public:
       }
       return Data(static_cast<uint>(idx));
     } else {
-      if constexpr (Major == RowMajor)
+      if constexpr (Major == RowMajor || Major == Symmetric)
         return data_[i * Rows() + j];
       else
         return data_[j * Cols() + i];
@@ -628,13 +635,13 @@ public:
     return data_[i];
   }
   uint OuterDim() const {
-    if constexpr (Major == RowMajor)
+    if constexpr (Major == RowMajor || Major == Symmetric)
       return Rows();
     else
       return Cols();
   }
   uint InnerDim() const {
-    if constexpr (Major == RowMajor)
+    if constexpr (Major == RowMajor || Major == Symmetric)
       return Cols();
     else
       return Rows();
@@ -693,6 +700,8 @@ public:
   class NonZeroIterator {
   public:
     explicit NonZeroIterator(const SparseMatrix &spm) {
+      static_assert(is_supported_vector<SparseMatrix> || storageType == Sparse,
+                    "Error: accessing dense matrix by is not supported yet");
       if constexpr (traits<SparseMatrix>::storage == Sparse) {
         inner_ = spm.storage_.InnerIndices();
         data_ = spm.storage_.Datas();
@@ -708,27 +717,34 @@ public:
       }
     }
     uint Row() const {
-      if constexpr (Major == RowMajor)
+      if constexpr (Major == RowMajor || Major == Symmetric)
         return Outer();
       else
         return Inner();
     }
     uint Col() const {
-      if constexpr (Major == RowMajor)
+      if constexpr (Major == RowMajor || Major == Symmetric)
         return Inner();
       else
         return Outer();
     }
-
     uint Outer() const { return outer_ptr_; }
-    uint Inner() const { return inner_[inner_ptr_]; }
+    uint Inner() const {
+      if constexpr (storageType == Sparse) {
+        return inner_[inner_ptr_];
+      } else if constexpr (is_supported_vector<SparseMatrix>) {
+        return inner_ptr_;
+      }
+    }
     Real value() const { return data_[inner_ptr_]; }
+    Real &value() { return data_[inner_ptr_]; }
     bool operator()() const { return inner_ptr_ < nnz_; }
     [[maybe_unused]] NonZeroIterator &operator++() {
       inner_ptr_++;
       if constexpr (!is_supported_vector<SparseMatrix>) {
-        while (inner_ptr_ >= outer_idx_[outer_ptr_ + 1])
+        while (inner_ptr_ >= outer_idx_[outer_ptr_ + 1]) {
           outer_ptr_++;
+        }
       }
       return *this;
     }
@@ -736,10 +752,15 @@ public:
   private:
     uint inner_ptr_ = 0, outer_ptr_ = 0;
     uint nnz_ = 0;
-    uint *outer_idx_ = nullptr;
     uint *inner_ = nullptr;
+    uint *outer_idx_ = nullptr;
     Real *data_ = nullptr;
   };
+
+  template <typename Func> void ForEachNonZeros(Func &&f) {
+    for (NonZeroIterator it(*this); it(); ++it)
+      it.value() = f(it.value());
+  }
 
   bool IsSquare() const { return Rows() == Cols(); }
 

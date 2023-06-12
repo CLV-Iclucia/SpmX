@@ -39,14 +39,13 @@ template <typename Lhs, typename Rhs> struct ProductReturnType {
                 traits<Lhs>::nCols == traits<Rhs>::nRows);
   using type = std::conditional_t<
       traits<Lhs>::nRows == 1 && traits<Rhs>::nCols == 1, Real,
-      SparseMatrix<
-          traits<Lhs>::nRows, traits<Rhs>::nCols,
-          traits<Lhs>::storage == Dense || traits<Rhs>::storage == Dense
-              ? Dense
-              : Sparse,
-          traits<Lhs>::major == Symmetric && traits<Lhs>::major == Symmetric
-              ? Symmetric
-              : traits<Lhs>::major>>;
+      SparseMatrix<traits<Lhs>::nRows, traits<Rhs>::nCols,
+                   traits<Lhs>::storage == Dense ||
+                           traits<Rhs>::storage == Dense
+                       ? Dense
+                       : Sparse,
+                   traits<Lhs>::major == Symmetric ? traits<Rhs>::major
+                                                   : traits<Lhs>::major>>;
 };
 
 template <typename Lhs, typename Rhs> struct SumReturnType {

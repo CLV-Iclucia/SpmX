@@ -21,20 +21,19 @@ public:
                 "matrix has to be declared explicitly as sparse and symmetric");
   const Derived &derived() const { return *static_cast<Derived *>(this); }
   Derived &derived() { return *static_cast<Derived *>(this); }
-  template <typename GeneralMatType>
-  void Analyse(const GeneralMatType &A) {
-    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+  template <typename GeneralMatType> void Analyse(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> &&
+                  traits<MatType>::major == Symmetric &&
                   traits<MatType>::storage == Sparse);
     derived().Analyse(A);
   }
-  template <typename GeneralMatType>
-  void Factorize(const GeneralMatType &A) {
-    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+  template <typename GeneralMatType> void Factorize(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> &&
+                  traits<MatType>::major == Symmetric &&
                   traits<MatType>::storage == Sparse);
     derived().Factorize(A);
   }
-  template <typename GeneralMatType>
-  void Compute(const GeneralMatType &A) {
+  template <typename GeneralMatType> void Compute(const GeneralMatType &A) {
     derived().Analyse(A);
     if (status_ != Success)
       return;
@@ -64,22 +63,26 @@ class SimplicialCholesky
 protected:
   template <typename GeneralMatType>
   void BuildEtreeFromMat(const GeneralMatType &A) {
-    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+    static_assert(is_same_shape_v<GeneralMatType, MatType> &&
+                  traits<MatType>::major == Symmetric &&
                   traits<MatType>::storage == Sparse);
-    Array<int> anc(A.Rows());
-    anc.Fill(-1);
-    for (uint i = 1; i < A.Rows(); i++) {
-      nnz_cnt_[i] = 1;
+    Array<uint> anc(A.Rows());
+    for (uint i = 0; i < size_; i++)
+      anc[i] = i;
+    std::cout << size_ << std::endl;
+    for (uint i = 0; i < size_; i++) {
       for (typename MatType::InnerIterator it(A, i); it() && it.Inner() < i;
            ++it) {
         uint x = it.Inner();
-        while (etree_fa_[x] >= 0) {
+        while (anc[x] != x) {
           uint t = anc[x];
           anc[x] = static_cast<int>(i);
           nnz_cnt_[x]++;
           x = t;
         }
-        etree_fa_[x] = anc[x] = static_cast<int>(i);
+        if (x == i) break;
+        etree_fa_[x] = anc[x] = i;
+        std::cout << x << " ---> " << i << std::endl;
       }
     }
     outer_idx_[0] = 0;
@@ -87,7 +90,6 @@ protected:
       outer_idx_[i + 1] = outer_idx_[i] + nnz_cnt_[i];
     }
     storage_.Reserve(outer_idx_[size_]);
-    memset(nnz_cnt_, 0, sizeof(uint) * size_);
   }
   void Reserve(uint size) {
     static_assert(!Size, "Error: Solvers for matrices of a fixed size cannot "
@@ -98,19 +100,20 @@ protected:
 #endif
     if (size > size_) {
       delete[] etree_fa_;
-      etree_fa_ = new uint[size];
+      etree_fa_ = new int[size];
       delete[] outer_idx_;
       outer_idx_ = new uint[size + 1];
       if constexpr (LDLT) {
         delete[] diag_;
         diag_ = new Real[size];
       }
-    nnz_cnt_ = new uint[size];
+      delete[] nnz_cnt_;
+      nnz_cnt_ = new uint[size];
     }
   }
-  template <typename GeneralMatType>
-  void InitSolver(const GeneralMatType &A) {
-    static_assert(is_same_shape_v<GeneralMatType, MatType> && traits<MatType>::major == Symmetric &&
+  template <typename GeneralMatType> void InitSolver(const GeneralMatType &A) {
+    static_assert(is_same_shape_v<GeneralMatType, MatType> &&
+                  traits<MatType>::major == Symmetric &&
                   traits<MatType>::storage == Sparse);
     if (!A.IsSquare()) {
       std::cerr << "Error: solvers can only apply on square matrices"
@@ -120,6 +123,9 @@ protected:
     }
     Reserve(A.Rows());
     size_ = A.Rows();
+    memset(nnz_cnt_, 0, sizeof(uint) * size_);
+    memset(etree_fa_, -1, sizeof(int) * size_);
+    memset(outer_idx_, 0, sizeof(uint) * (size_ + 1));
   }
 
 public:
@@ -129,7 +135,7 @@ public:
       allocated_size = Size;
       MEMORY_LOG_ALLOC(etree_fa_, Size);
 #endif
-      etree_fa_ = new uint[Size];
+      etree_fa_ = new int[Size];
       if constexpr (LDLT)
         diag_ = new uint[Size];
       outer_idx_ = new uint[Size + 1];
@@ -143,8 +149,7 @@ public:
    * just make one call to Analyze
    * @param A
    */
-  template <typename GeneralMatType>
-  void Analyse(const GeneralMatType &A) {
+  template <typename GeneralMatType> void Analyse(const GeneralMatType &A) {
     InitSolver(A);
     if (status_ == InvalidInput)
       return;
@@ -154,8 +159,7 @@ public:
    * Since A is symmetric, we can safely accessing it in any major.
    * @param A
    */
-  template <typename GeneralMatType>
-  void Factorize(const GeneralMatType &A) {
+  template <typename GeneralMatType> void Factorize(const GeneralMatType &A) {
     Array<Real> sum(size_);
     Array<uint> mask(size_);
     Array<uint> row_sparsity_pattern(size_);
@@ -236,6 +240,24 @@ public:
     }
     return x;
   }
+  Real Det() const {
+    Real prod = 1.0;
+    if (status_ != Success) {
+      std::cerr << "Error: current solver state doesn't support calculating "
+                   "determinant"
+                << std::endl;
+      return -1;
+    }
+    if constexpr (LDLT) {
+      for (uint i = 0; i < size_; i++)
+        prod *= storage_.Data(outer_idx_[i]);
+    } else {
+      for (uint i = 0; i < size_; i++)
+        prod *= diag_[i];
+    }
+    return prod;
+  }
+
   ~SimplicialCholesky() {
 #ifdef MEMORY_TRACING
     if (etree_fa_ == nullptr)
@@ -257,8 +279,8 @@ protected:
   finalized_when_t<LDLT, Real *> diag_ = nullptr;
   uint *nnz_cnt_ = nullptr;
   uint *outer_idx_ = nullptr;
-  uint *etree_fa_ = nullptr; // for the largest index, its father on elimination
-                             // tree is undefined, and shouldn't be accessed
+  int *etree_fa_ = nullptr; // for the largest index, its father on elimination
+                            // tree is undefined, and shouldn't be accessed
   SparseStorage storage_;
   using Base = SparseCholeskyBase<SimplicialCholesky>;
   using Base::status_;

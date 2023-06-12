@@ -34,7 +34,7 @@ inline ProdRet<Lhs, Rhs> DenseDenseMatMulImpl(const Lhs &lhsEval,
 
 template <typename LhsInnerIterator, typename RhsInnerIterator>
 inline Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
-                              RhsInnerIterator &rhs_it) {
+                                        RhsInnerIterator &rhs_it) {
   Real sum = 0.0;
   while (lhs_it() && rhs_it()) {
     if (lhs_it.Inner() < rhs_it.Inner())
@@ -51,11 +51,10 @@ inline Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
 }
 
 /**
- * Here we process matrix * vector and ignores the whether the vector is col-vector or row-vector
- * So the cases are
- * Matrix(Sparse/Dense, Col/Row) * Vector(Sparse/Dense)
- * for vector we always call its NonZeroIterator
- * So we can focus one the latter
+ * Here we process matrix * vector and ignores the whether the vector is
+ * col-vector or row-vector So the cases are Matrix(Sparse/Dense, Col/Row) *
+ * Vector(Sparse/Dense) for vector we always call its NonZeroIterator So we can
+ * focus one the latter
  * @tparam Lhs
  * @tparam Rhs
  * @param lhsEval
@@ -69,13 +68,14 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
                           ((traits<Lhs>::major == RowMajor) << 1) |
                           (traits<Rhs>::storage == Dense);
   if constexpr (traits<Lhs>::storage == Sparse) {
-    if constexpr (traits<Lhs>::major == RowMajor) {
+    if constexpr (traits<Lhs>::major == RowMajor ||
+                  traits<Lhs>::major == Symmetric) {
       if constexpr (traits<Rhs>::storage == Dense) {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
+        uint num_tasks = ;
         for (uint i = 0; i < lhsEval.OuterDim(); i++) {
-          for (typename Lhs::InnerIterator it(lhsEval, i); it(); ++it) {
+          for (typename Lhs::InnerIterator it(lhsEval, i); it(); ++it)
             ret(i) += it.value() * rhsEval(it.Inner());
-          }
         }
         return ret;
       } else {
@@ -128,7 +128,8 @@ inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
       }
     }
   } else {
-    if constexpr (traits<Lhs>::major == RowMajor) {
+    if constexpr (traits<Lhs>::major == RowMajor ||
+                  traits<Lhs>::major == Symmetric) {
       if constexpr (traits<Rhs>::storage == Dense) {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
         for (uint i = 0; i < lhsEval.OuterDim(); i++) {

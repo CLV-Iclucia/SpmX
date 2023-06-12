@@ -87,9 +87,14 @@ public:
     static_assert(traits<RetType>::storage == Dense);
     return coeff_ * rhs_(i, j);
   }
+
+  Real operator()(uint i) const {
+    static_assert(traits<RetType>::storage == Dense);
+    return coeff_ * rhs_(i);
+  }
   Real AccessByMajor(uint i, uint j) const {
     static_assert(traits<RetType>::storage == Dense);
-    return coeff_ * rhs_.AcessByMajor(i, j);
+    return coeff_ * rhs_.AccessByMajor(i, j);
   }
   uint NonZeroEst() const { return rhs_.NonZeroEst(); }
   uint Rows() const { return rhs_.Rows(); }
@@ -297,9 +302,13 @@ public:
     static_assert(traits<RetType>::storage == Dense);
     return lhs_(i, j) + Coeff * rhs_(i, j);
   }
+  Real operator()(uint i) const {
+    static_assert(traits<RetType>::storage == Dense);
+    return lhs_(i) + Coeff * rhs_(i);
+  }
   Real AccessByMajor(uint i, uint j) const {
     static_assert(traits<RetType>::storage == Dense);
-    return lhs_.AccessByMajor(i, j) + Coeff * rhs_.AcessByMajor(i, j);
+    return lhs_.AccessByMajor(i, j) + Coeff * rhs_.AccessByMajor(i, j);
   }
   const Lhs &LhsExpr() const { return lhs_; }
   const Rhs &RhsExpr() const { return rhs_; }
@@ -372,12 +381,14 @@ SparseMatrixBase<Derived>::operator+=(const Rhs &rhs) {
       "sparse matrix. SpmX is a small lib designed specifically for sparse "
       "matrices. More support for dense matrices will be provided in future "
       "updates");
-  if (traits<Derived>::storage == Sparse) {
+  if constexpr (traits<Derived>::storage == Sparse) {
     derived() = derived() + rhs;
   } else {
     if constexpr (traits<Rhs>::storage == Dense) {
-
+      for (uint i = 0; i < Dim(); i++)
+        derived().operator()(i) += rhs.operator()(i);
     } else {
+
     }
   }
   return derived();
@@ -387,12 +398,14 @@ template <typename Derived>
 template <typename Rhs>
 typename SparseMatrixBase<Derived>::Lhs &
 SparseMatrixBase<Derived>::operator-=(const Rhs &rhs) {
-  if (traits<Derived>::storage == Sparse) {
+  if constexpr (traits<Derived>::storage == Sparse) {
     derived() = derived() - rhs;
   } else {
     if constexpr (traits<Rhs>::storage == Dense) {
-
+        for (uint i = 0; i < Dim(); i++)
+          derived().operator()(i) -= rhs.operator()(i);
     } else {
+
     }
   }
   return derived();
