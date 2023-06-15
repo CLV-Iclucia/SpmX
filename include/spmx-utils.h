@@ -5,12 +5,13 @@
 #ifndef SPMX_SPMX_UTILS_H
 #define SPMX_SPMX_UTILS_H
 #include <algorithm>
+#include <cassert>
 #include <climits>
+#include <parallel.h>
 #include <random>
 #include <spmx-types.h>
 #include <type-utils.h>
 #include <type_traits>
-#include <cassert>
 
 namespace spmx {
 template <typename T> inline bool SimZero(T x) {
@@ -60,6 +61,15 @@ template <StorageMajor major> bool TripletCmp(Triplet ta, Triplet tb) {
                : std::get<1>(ta) < std::get<1>(tb);
 }
 
+template <typename Vec> inline Real BlockL2Norm(const Vec& v, uint l, uint r) {
+  Real sum = 0;
+  if constexpr (is_spm_v<Vec>)
+    __builtin_prefetch(v.Datas() + l, 0, 0);
+  for (uint i = l; i < r; i++)
+    sum += v(i) * v(i);
+  return sum;
+}
+
 template <typename Vec> inline Real L2NormSqr(const Vec &v) {
   Real sum = 0;
   if (traits<Vec>::storage == Sparse) {
@@ -73,10 +83,7 @@ template <typename Vec> inline Real L2NormSqr(const Vec &v) {
 }
 
 template <typename Vec> inline Real L2Norm(const Vec &v) {
-  Real sum = 0;
-  for (typename Vec::NonZeroIterator it(v); it(); ++it)
-    sum += it.value() * it.value();
-  return std::sqrt(sum);
+  return std::sqrt(L2NormSqr(v));
 }
 
 template <typename Vec> inline Real L1Norm(const Vec &v) {
@@ -84,6 +91,13 @@ template <typename Vec> inline Real L1Norm(const Vec &v) {
   for (typename Vec::NonZeroIterator it(v); it(); ++it)
     sum += std::abs(it.value());
   return sum;
+}
+
+template <typename Vec> inline Real MaxNorm(const Vec &v) {
+  Real maxv = -1.0;
+  for (typename Vec::NonZeroIterator it(v); it(); ++it)
+    maxv = std::max(std::abs(it.value()), maxv);
+  return maxv;
 }
 
 template <typename Lhs, typename Rhs>

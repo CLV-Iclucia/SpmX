@@ -7,8 +7,11 @@
 
 #include <csignal>
 #include <expressions.h>
+#include <functional>
+#include <parallel.h>
 #include <sparse-matrix.h>
 #include <spmx-utils.h>
+
 namespace spmx {
 
 // TODO: classical iterative solvers
@@ -23,8 +26,7 @@ public:
   const Derived &derived() const { return *static_cast<Derived *>(this); }
   Derived &derived() { return *static_cast<Derived *>(this); };
   template <typename GeneralMatType>
-  Vector<Dense> Solve(const GeneralMatType &A,
-                      const Vector<Dense> &b) {
+  Vector<Dense> Solve(const GeneralMatType &A, const Vector<Dense> &b) {
     Vector<Dense> ret(b.Dim());
     derived().Solve(A, b, ret);
     return ret;
@@ -37,14 +39,23 @@ protected:
   Real eps_ = 1e-5;
 };
 
-template <typename Derived>
-class JacobiSolver final : public IterativeSolverBase<JacobiSolver<Derived>> {
+template <typename MatType>
+class JacobiSolver final : public IterativeSolverBase<JacobiSolver<MatType>> {
 public:
+  using Base = IterativeSolverBase<JacobiSolver<MatType>>;
+  static constexpr uint Size = traits<MatType>::nRows;
   template <StorageType VecStorage>
-  void Solve(const SparseMatrixBase<Derived> &A, const Vector<VecStorage> &b,
+  void Solve(const MatType &A, const Vector<VecStorage> &b,
              Vector<Dense> &x) const {
-    RandFill(x);
+    static_assert(is_spm_v<MatType>);
+    if (A.Rows() != A.Cols()) {
+      status_ = InvalidInput;
+      return ;
+    }
+
   }
+private:
+  using Base::status_;
 };
 
 template <typename Derived>
@@ -82,42 +93,52 @@ class ConjugateGradientSolver final
       IterativeSolverBase<ConjugateGradientSolver<MatType, Preconditioner>>;
 
 public:
-  using Base::Solve;
   using Base::SetMaxRounds;
   using Base::SetPrecision;
-  template <typename GeneralMatType>
-  void Solve(const GeneralMatType &A, const Vector<Dense> &b,
-             Vector<Dense> &x) {
-    static_assert(
-        traits<GeneralMatType>::major == Symmetric &&
-            traits<GeneralMatType>::storage == Sparse,
-        "Error: to use the conjugate gradient solver, the "
-        "matrix has to be declared explicitly as sparse and symmetric");
+  using Base::Solve;
+
+  void Solve(const MatType &A, const Vector<Dense, Size> &b,
+             Vector<Dense, Size> &x) {
     if constexpr (std::is_same_v<Preconditioner, void>) {
       Vector<Dense, Size> r(b - A * x);
       Vector<Dense, Size> p(r);
       Vector<Dense, Size> Ap(A * p);
       Real r_norm_sqr = L2NormSqr(r);
+      using SpmvKer = decltype(spmv_ker);
+      int tasks = (b.Dim() + BLOCK_SIZE - 1) / BLOCK_SIZE;
+      ParallelExecuter<SpmvKer, const MatType &, const Vector<Dense, Size> &,
+                       Vector<Dense, Size> &>
+          parallel_spmv(
+              spmv_ker,
+              std::min(static_cast<int>(std::thread::hardware_concurrency()),
+                       std::min(NUM_MAX_THREADS, tasks)),
+              A, p, Ap);
+      bool worth_parallel =
+          (tasks >= PARALLEL_THRESHOLD_DIM &&
+           A.NonZeroEst() >= PARALLEL_THRESHOLD_NNZ * A.Rows());
       for (total_rounds_ = 1;
            max_rounds_ < 0 || static_cast<int>(total_rounds_) < max_rounds_;
            total_rounds_++) {
         Real pAp = Dot(p, Ap);
         [[unlikely]] if (iszero(pAp)) {
           status_ = Success;
-          return ;
+          return;
         }
         Real alpha = r_norm_sqr / pAp;
         x += alpha * p;
         r -= alpha * Ap;
-        if (L1Norm(r) < eps_) {
-          status_ = Success;
-          return ;
-        }
         Real new_r_norm_sqr = L2NormSqr(r);
+        if (new_r_norm_sqr < eps_ * eps_) {
+          status_ = Success;
+          return;
+        }
         Real beta = new_r_norm_sqr / r_norm_sqr;
         p = r + beta * p;
         r_norm_sqr = new_r_norm_sqr;
-        Ap = A * p;
+        if (worth_parallel)
+          parallel_spmv.run(tasks);
+        else
+          Ap = A * p;
       }
       status_ = NotConverge;
     } else {
@@ -128,9 +149,9 @@ public:
 private:
   using Base::eps_;
   using Base::max_rounds_;
-
   using Base::status_;
   using Base::total_rounds_;
+  ParallelSpmvKernel<MatType, Vector<Dense, Size>> spmv_ker;
 };
 
 template <typename Derived_, typename Precond_>

@@ -26,6 +26,8 @@ template <typename Rhs>
 class UnaryExpr : public SparseMatrixBase<UnaryExpr<Rhs>> {
 public:
   UnaryExpr(Real coeff, const Rhs &rhs) : coeff_(coeff), rhs_(rhs) {}
+  UnaryExpr(const UnaryExpr &) = delete;
+  UnaryExpr(UnaryExpr &&) = delete;
   using RetType = Rhs;
   using Base = SparseMatrixBase<UnaryExpr<Rhs>>;
   using Expr = UnaryExpr<Rhs>;
@@ -125,7 +127,8 @@ public:
   using Base::operator+;
   using Base::operator-;
   LinearExpr(const Lhs &lhs, const Rhs &rhs) : lhs_(lhs), rhs_(rhs) {}
-
+  LinearExpr(const LinearExpr&) = delete;
+  LinearExpr(LinearExpr&&) = delete;
   class NonZeroIterator {
   public:
     explicit NonZeroIterator(const Expr &expr)
@@ -360,7 +363,6 @@ template <typename Derived>
 template <typename Rhs>
 AddExpr<typename SparseMatrixBase<Derived>::Lhs, Rhs>
 SparseMatrixBase<Derived>::operator+(const Rhs &rhs) const {
-
   return AddExpr<Lhs, Rhs>(derived(), rhs);
 }
 

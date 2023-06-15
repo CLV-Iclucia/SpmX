@@ -22,6 +22,12 @@ enum SolverStatus {
   NotConverge,
   InvalidInput
 };
+
+#define NUM_MAX_THREADS NUMBER_OF_CPU_PHYSICAL_CORES
+#define BLOCK_SIZE 512
+#define PARALLEL_THRESHOLD_DIM 4
+#define PARALLEL_THRESHOLD_NNZ 4
+
 #ifdef MEMORY_TRACING
 #define MEMORY_LOG_ALLOC(ClassName, size)                                      \
   std::cout << "******* Memory Log: " << #ClassName << "-allocate " << size    \

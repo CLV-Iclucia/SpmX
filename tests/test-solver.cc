@@ -10,10 +10,10 @@ const uint TEST_CHOLESKY = 1u << 0;
 const uint TEST_CG = 1u << 1;
 
 using namespace spmx;
-const uint MAX_SZ = 100000, MAX_UPPER = 2000000;
+const uint MAX_SZ = 10000, MAX_UPPER = 50000;
 const uint TESTS = TEST_CG;
 Triplet tList[MAX_UPPER << 1];
-const int MAX_CASES = 1;
+const int MAX_CASES = 100;
 static int res[MAX_CASES];
 
 void RandFillMat(uint n, uint& nnz) {
@@ -58,13 +58,23 @@ void TestSolve() {
     }
     if constexpr (Test == TEST_CG) {
       ConjugateGradientSolver<SparseMatrix<0, 0, Sparse, Symmetric>> solver;
+      solver.SetMaxRounds(20000);
+      solver.SetPrecision(1e-5);
       ans = solver.Solve(mat, b);
       std::cout << "case " << kase << ". " << solver.Rounds() << std::endl;
+      Real eps = MaxNorm(mat * ans - b);
+      if (!SimZero(eps)) {
+        std::cerr << "the error is " << eps << std::endl;
+        if (eps > 10.0) {
+          std::cerr << "the error is too big, retrying" << std::endl;
+          RandFill(ans);
+          solver.Solve(mat, b, ans);
+          eps = MaxNorm(mat * ans - b);
+          std::cout << "after retrying, the error is " << eps << std::endl;
+        }
+      }
     }
-    Real eps = L2Norm(mat * ans - b);
-    if (!SimZero(eps)) {
-      std::cerr << "Warning: the error is " << eps << std::endl;
-    }
+
     kase++;
   }
 }

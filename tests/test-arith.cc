@@ -10,8 +10,8 @@ const uint TEST_DENSE_MMUL = 1u << 3;
 const uint TEST_MV_MUL = 1u << 4;
 
 using namespace spmx;
-const uint MAX_ROWS = 800, MAX_COLS = 800, MAX_NNZ = 10000;
-const uint TESTS = TEST_MV_MUL;
+const uint MAX_ROWS = 10, MAX_COLS = 10, MAX_NNZ = 10;
+const uint TESTS = TEST_MV_MUL | TEST_LIN | TEST_MMUL | TEST_SET;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 static Real golden[MAX_ROWS][MAX_COLS];
@@ -47,6 +47,9 @@ bool TestSame(Real stdmat[][MAX_COLS], const SparseMatrixXd &spm) {
   for (uint i = 0; i < spm.NonZeroEst(); i++)
     if (!Similar(std::get<2>(v[i]),
                  stdmat[std::get<0>(v[i])][std::get<1>(v[i])])) {
+      std::cerr << std::get<2>(v[i]) << " " << std::get<0>(v[i]) << " "
+                << std::get<1>(v[i]) << " "
+                << stdmat[std::get<0>(v[i])][std::get<1>(v[i])] << std::endl;
       std::cerr << "Testing same: wrong value" << std::endl;
       return false;
     }
@@ -74,7 +77,6 @@ void TestSet() {
   uint kase = 0;
   printf("Running tests on SetFromTriplets...\n");
   while (kase < MAX_CASES) {
-    std::printf("-------------------------------------------\n");
     std::printf("Start test %d\n", ++kase);
     memset(golden, 0, sizeof(golden));
     uint m = Randu() % MAX_ROWS + 1;
@@ -90,16 +92,11 @@ void TestSet() {
         std::cerr << std::get<0>(tList[i]) << " " << std::get<1>(tList[i])
                   << " " << std::get<2>(tList[i]) << std::endl;
       std::cerr << "Expected" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(golden[i][j]))
-            std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
       std::cerr << "Your result is" << std::endl;
       std::cerr << spm << std::endl;
       exit(-1);
     }
     printf("Passed test case %d\n", kase);
-    std::printf("-------------------------------------------\n");
   }
   printf("Passed all tests on setFromTriplets.\n");
 }
@@ -139,28 +136,6 @@ void TestLin() {
     spm = a * spmA - b * spmB + c * spmC;
     if (!TestSame(golden, spm)) {
       std::cerr << "Failed test linear. Failing case is:" << std::endl;
-      std::cerr << "A:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(A[i][j]))
-            std::cerr << i << " " << j << " " << a * A[i][j] << std::endl;
-      std::cerr << "B:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(B[i][j]))
-            std::cerr << i << " " << j << " " << -b * B[i][j] << std::endl;
-      std::cerr << "C:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(C[i][j]))
-            std::cerr << i << " " << j << " " << c * C[i][j] << std::endl;
-      std::cerr << "std:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(golden[i][j]))
-            std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
-      std::cerr << "Your result is" << std::endl;
-      std::cerr << "spm:" << std::endl << spm << std::endl;
       exit(-1);
     }
     printf("Passed test case %d\n", ++kase);
@@ -170,61 +145,34 @@ void TestLin() {
 
 void TestMatMul() {
   uint kase = 0;
-  printf("Running tests on linear expressions...\n");
+  printf("Running tests on mat muls...\n");
   while (kase < MAX_CASES) {
     memset(golden, 0, sizeof(golden));
     memset(A, 0, sizeof(A));
     memset(B, 0, sizeof(B));
     memset(C, 0, sizeof(C));
     uint m = Randu() % MAX_ROWS + 1;
+    uint p = Randu() % MAX_COLS + 1;
     uint n = Randu() % MAX_COLS + 1;
     uint nnz = Randu() % MAX_NNZ + 1;
     Real a = RandReal();
     Real b = RandReal();
     Real c = RandReal();
     SparseMatrixXd spmA, spmB, spm, spmC;
-    RandFillMat(A, n, m, nnz);
+    RandFillMat(A, m, n, nnz);
     spmA.Resize(m, n);
+    spmB.Resize(n, p);
     spmA.SetFromTriplets(tList, tList + nnz);
     nnz = Randu() % MAX_NNZ;
-    RandFillMat(B, m, n, nnz);
-    for (uint i = 0; i < m; i++)
-      for (uint j = 0; j < n; j++)
-        golden[i][j] = a * A[j][i] - b * B[i][j];
-    spmB.Resize(m, n);
+    RandFillMat(B, n, p, nnz);
     spmB.SetFromTriplets(tList, tList + nnz);
-    nnz = Randu() % MAX_NNZ + 1;
-    RandFillMat(C, m, n, nnz);
     for (uint i = 0; i < m; i++)
-      for (uint j = 0; j < n; j++)
-        golden[i][j] += c * C[i][j];
-    spmC.Resize(m, n);
-    spmC.SetFromTriplets(tList, tList + nnz);
-    spm = a * spmA.Transposed() - b * spmB + c * spmC;
+      for (uint j = 0; j < p; j++)
+        for (uint k = 0; k < n; k++)
+          golden[i][j] += A[i][k] * B[k][j];
+    spm = spmA * spmB;
     if (!TestSame(golden, spm)) {
       std::cerr << "Failed test linear. Failing case is:" << std::endl;
-      std::cerr << "A:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(A[i][j]))
-            std::cerr << i << " " << j << " " << a * A[i][j] << std::endl;
-      std::cerr << "B:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(B[i][j]))
-            std::cerr << i << " " << j << " " << -b * B[i][j] << std::endl;
-      std::cerr << "C:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(C[i][j]))
-            std::cerr << i << " " << j << " " << c * C[i][j] << std::endl;
-      std::cerr << "std:" << std::endl;
-      for (uint i = 0; i < m; i++)
-        for (uint j = 0; j < n; j++)
-          if (!iszero(golden[i][j]))
-            std::cerr << i << " " << j << " " << golden[i][j] << std::endl;
-      std::cerr << "Your result is" << std::endl;
-      std::cerr << "spm:" << std::endl << spm << std::endl;
       exit(-1);
     }
     printf("Passed test case %d\n", ++kase);
@@ -255,8 +203,6 @@ void TestMvMul() {
     if (!TestSame(golden_v, calc_v)) {
       std::cerr << "Failed test mat-vec-multiplication. Failing case is:"
                 << std::endl;
-      std::cerr << "Your result is" << std::endl;
-      std::cerr << "spm:" << std::endl << calc_v << std::endl;
       exit(-1);
     }
     printf("Passed test case %d\n", ++kase);

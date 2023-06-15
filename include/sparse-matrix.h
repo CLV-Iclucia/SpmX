@@ -80,7 +80,7 @@ public:
     if constexpr (!nCols)
       n_cols_ = n_cols;
   }
-  void BuildDenseStorage(uint dim) {
+  void ReserveDenseStorage(uint dim) {
     if (storageType == Dense) {
       data_ = new Real[dim];
 #ifdef MEMORY_TRACING
@@ -103,7 +103,7 @@ public:
     if constexpr (Major == ColMajor)
       dim = n_rows;
     if constexpr (is_supported_vector<SparseMatrix>) {
-      BuildDenseStorage(dim);
+      ReserveDenseStorage(dim);
       return;
     }
     if constexpr (storageType == Sparse) {
@@ -113,7 +113,7 @@ public:
       MEMORY_LOG_ALLOC(SparseMatrix, dim + 1);
 #endif
     } else
-      BuildDenseStorage(n_rows * n_cols);
+      ReserveDenseStorage(n_rows * n_cols);
   }
 
   uint Dim(uint n_rows, uint n_cols) {
@@ -195,7 +195,7 @@ public:
           storage_.InnerIdx(nnz_) = inner;
           while (outer == cur_outer && inner == cur_inner) {
             storage_.Data(nnz_) += std::get<2>(*it);
-            it++;
+            ++it;
             if (it == end)
               break;
             outer = Major == RowMajor || Major == Symmetric ? std::get<0>(*it)
@@ -207,7 +207,8 @@ public:
         }
       }
       storage_.SetUsed(nnz_);
-      outer_idx_[OuterDim()] = nnz_;
+      for (uint i = outer_idx; i <= OuterDim(); i++)
+        outer_idx_[i] = nnz_;
     }
   }
 
@@ -406,9 +407,8 @@ public:
       typename OtherDerived::NonZeroIterator it(other);
       SetByIterator(it);
     } else {
-      for (uint i = 0; i < OuterDim(); i++)
-        for (uint j = 0; j < InnerDim(); j++)
-          AccessByMajor(i, j) = other.AccessByMajor(i, j);
+      for (uint i = 0; i < Dim(); i++)
+        operator()(i) = other.operator()(i);
     }
     return *this;
   }
@@ -480,13 +480,12 @@ public:
 
   // Only allowed for dense vector. Constructor for an n-dim dense vector
   explicit SparseMatrix(uint n) {
-    static_assert(storageType == Dense && is_supported_vector<SparseMatrix> &&
-                  !is_fixed_shape_v<SparseMatrix>);
-    data_ = new Real[n];
-    if constexpr (nRows == 1)
+    static_assert(storageType == Dense && is_supported_vector<SparseMatrix>);
+    if constexpr (is_supported_vector_of_major_v<SparseMatrix, RowMajor>)
       n_cols_ = n;
     else
       n_rows_ = n;
+    data_ = new Real[n];
   }
 
   /**
@@ -669,9 +668,21 @@ public:
   uint &OuterIdx(uint i) { return outer_idx_[i]; }
   uint InnerIdx(uint i) const { return storage_.InnerIdx(i); }
   uint &InnerIdx(uint i) { return storage_.InnerIdx(i); }
-  Real Data(uint i) const { return storage_.Data(i); }
-  Real &Data(uint i) { return storage_.Data(i); }
-  Real *Datas() const { return storage_.Datas(); }
+  Real Data(uint i) const {
+    if constexpr (storageType == Sparse)
+      return storage_.Data(i);
+    else return data_[i];
+  }
+  Real &Data(uint i) {
+    if constexpr (storageType == Sparse)
+      return storage_.Data(i);
+    else return data_[i];
+  }
+  Real *Datas() const {
+    if constexpr (storageType == Sparse)
+      return storage_.Datas();
+    else return data_;
+  }
   void Prune() { nnz_ = outer_idx_[OuterDim()]; }
   int IndexAt(uint i, uint j) const {
     uint idx = storage_.SearchIndex(OuterIdx(), j);

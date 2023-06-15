@@ -7,7 +7,9 @@
 
 #include <cmath>
 #include <my-stl.h>
+#include <parallel.h>
 #include <type-utils.h>
+
 namespace spmx {
 
 template <typename Lhs, typename Rhs>
@@ -64,19 +66,18 @@ inline Real SparseSparseVectorDotKernel(LhsInnerIterator &lhs_it,
 template <typename Lhs, typename Rhs>
 inline ProdRet<Lhs, Rhs> SpmvImpl(const Lhs &lhsEval, const Rhs &rhsEval) {
   static_assert(is_supported_vector<Lhs> || is_supported_vector<Rhs>);
-  constexpr uint option = ((traits<Lhs>::storage == Sparse) << 2) |
-                          ((traits<Lhs>::major == RowMajor) << 1) |
-                          (traits<Rhs>::storage == Dense);
+  constexpr uint option =
+      ((traits<Lhs>::storage == Sparse) << 2) |
+      ((traits<Lhs>::major == RowMajor || traits<Lhs>::major == Symmetric)
+       << 1) |
+      (traits<Rhs>::storage == Dense);
   if constexpr (traits<Lhs>::storage == Sparse) {
     if constexpr (traits<Lhs>::major == RowMajor ||
                   traits<Lhs>::major == Symmetric) {
       if constexpr (traits<Rhs>::storage == Dense) {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols());
-        uint num_tasks = ;
-        for (uint i = 0; i < lhsEval.OuterDim(); i++) {
-          for (typename Lhs::InnerIterator it(lhsEval, i); it(); ++it)
-            ret(i) += it.value() * rhsEval(it.Inner());
-        }
+        for (typename Lhs::NonZeroIterator it(lhsEval); it(); ++it)
+          ret(it.Outer()) += it.value() * rhsEval(it.Inner());
         return ret;
       } else {
         ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols(), rhsEval.Cols());
