@@ -19,6 +19,7 @@ public:
 #ifdef MEMORY_TRACING
     MEMORY_LOG_ALLOC(SparseStorage, allocate_size);
 #endif
+    if (!allocate_size) return ;
     inner_idx_ = new uint[allocate_size];
     data_ = new Real[allocate_size];
   }

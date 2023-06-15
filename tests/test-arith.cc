@@ -10,8 +10,8 @@ const uint TEST_DENSE_MMUL = 1u << 3;
 const uint TEST_MV_MUL = 1u << 4;
 
 using namespace spmx;
-const uint MAX_ROWS = 10, MAX_COLS = 10, MAX_NNZ = 10;
-const uint TESTS = TEST_MV_MUL | TEST_LIN | TEST_MMUL | TEST_SET;
+const uint MAX_ROWS = 1000, MAX_COLS = 1000, MAX_NNZ = 3000;
+const uint TESTS = TEST_MMUL;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 static Real golden[MAX_ROWS][MAX_COLS];
@@ -172,12 +172,21 @@ void TestMatMul() {
           golden[i][j] += A[i][k] * B[k][j];
     spm = spmA * spmB;
     if (!TestSame(golden, spm)) {
-      std::cerr << "Failed test linear. Failing case is:" << std::endl;
+      std::cerr << "Failed test mat-mul. Failing case is:" << std::endl;
+      for (uint i = 0; i < m; i++) {
+        for (uint j = 0; j < n; j++) {
+          if (!iszero(golden[i][j])) {
+            std::cout << i << " " << j << " " << golden[i][j] << std::endl;
+          }
+        }
+      }
+      std::cout << "Your result" << std::endl;
+      std::cout << spm << std::endl;
       exit(-1);
     }
     printf("Passed test case %d\n", ++kase);
   }
-  printf("Passed all tests on linear ops.\n");
+  printf("Passed all tests on mat muls.\n");
 }
 
 void TestMvMul() {
@@ -203,6 +212,7 @@ void TestMvMul() {
     if (!TestSame(golden_v, calc_v)) {
       std::cerr << "Failed test mat-vec-multiplication. Failing case is:"
                 << std::endl;
+
       exit(-1);
     }
     printf("Passed test case %d\n", ++kase);

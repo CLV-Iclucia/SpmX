@@ -138,6 +138,7 @@ public:
       outer_idx_used = dim + 1;
       MEMORY_LOG_ALLOC(SparseMatrix, dim + 1);
 #endif
+      memset(outer_idx_, 0, sizeof(uint) * (dim + 1));
     }
   }
   /**
@@ -455,6 +456,7 @@ public:
     SetShape(other.Rows(), other.Cols());
   }
 
+  void Prune() { nnz_ = outer_idx_[OuterDim()]; }
   SparseMatrix &operator=(SparseMatrix &&other) noexcept {
     if (&other == this)
       return *this;
@@ -653,6 +655,7 @@ public:
   }
   uint Dim() const { return Rows() * Cols(); }
   const SparseStorage &Storage() const { return storage_; }
+  SparseStorage& Storage() { return storage_; }
   uint *OuterIndices() const { return outer_idx_; }
   uint *InnerIndices() const { return storage_.InnerIndices(); }
   uint OuterIdx(uint i) const {
@@ -683,7 +686,6 @@ public:
       return storage_.Datas();
     else return data_;
   }
-  void Prune() { nnz_ = outer_idx_[OuterDim()]; }
   int IndexAt(uint i, uint j) const {
     uint idx = storage_.SearchIndex(OuterIdx(), j);
     return idx == OuterIdx() ? -1 : static_cast<int>(idx);

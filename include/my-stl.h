@@ -173,7 +173,7 @@ public:
   ~Array() {
     delete[] data_;
 #ifdef MEMORY_TRACING
-    MEMORY_LOG_ALLOC(Array, n_);
+    MEMORY_LOG_DELETE(Array, n_);
 #endif
   }
 

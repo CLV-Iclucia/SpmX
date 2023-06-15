@@ -5,6 +5,7 @@
 #ifndef SPMX_MAT_MUL_IMPL_H
 #define SPMX_MAT_MUL_IMPL_H
 
+#include <cassert>
 #include <cmath>
 #include <my-stl.h>
 #include <parallel.h>
@@ -178,11 +179,32 @@ inline ProdRet<Lhs, Rhs> SparseSparseMatMulImpl(const Lhs &lhsEval,
   static_assert(traits<Lhs>::storage == Sparse &&
                 traits<Rhs>::storage == Sparse &&
                 traits<Lhs>::major == traits<Rhs>::major);
-  ProdRet<Lhs, Rhs> ret(lhsEval.Rows(), rhsEval.Cols(),
-                        lhsEval.NonZeroEst() + rhsEval.NonZeroEst());
-  Array<int> mask(rhsEval.Cols());
-  Array<int> idx_bucket(rhsEval.Cols());
-  Array<Real> extended(rhsEval.Cols());
+  uint est_nnz = 0;
+  if (!lhsEval.NonZeroEst() || !rhsEval.NonZeroEst())
+    return ProdRet<Lhs, Rhs>(lhsEval.OuterDim(), rhsEval.InnerDim(), 0);
+  Array<int> mask(rhsEval.InnerDim());
+  Array<int> idx_bucket(rhsEval.InnerDim());
+  Array<Real> extended(rhsEval.InnerDim());
+  mask.Fill(-1);
+  extended.Fill(0);
+  for (uint i = 0; i < lhsEval.OuterDim(); i++) {
+    // 1. calc the result of an inner vector in extended form
+    for (typename Lhs::InnerIterator lhs_it(lhsEval, i); lhs_it(); ++lhs_it) {
+      for (typename Rhs::InnerIterator rhs_it(rhsEval, lhs_it.Inner());
+           rhs_it(); ++rhs_it) {
+        if (mask(rhs_it.Inner()) != i) {
+          est_nnz++;
+          mask(rhs_it.Inner()) = i;
+        }
+      }
+    }
+  }
+  est_nnz = std::min(est_nnz, lhsEval.OuterDim() * rhsEval.InnerDim());
+  ProdRet<Lhs, Rhs> ret(lhsEval.OuterDim(), rhsEval.InnerDim(), est_nnz);
+  if (!est_nnz) {
+    return ret;
+  }
+  mask.Fill(-1);
   ret.OuterIdx(0) = 0;
   // estimate the number of non-zero elements of the result
   for (uint i = 0; i < lhsEval.OuterDim(); i++) {
@@ -192,9 +214,9 @@ inline ProdRet<Lhs, Rhs> SparseSparseMatMulImpl(const Lhs &lhsEval,
       for (typename Rhs::InnerIterator rhs_it(rhsEval, lhs_it.Inner());
            rhs_it(); ++rhs_it) {
         extended(rhs_it.Inner()) += lhs_it.value() * rhs_it.value();
-        if (!mask(rhs_it.Inner())) {
+        if (mask(rhs_it.Inner()) != i) {
           idx_bucket[nnz++] = rhs_it.Inner();
-          mask(rhs_it.Inner()) = 1;
+          mask(rhs_it.Inner()) = i;
         }
       }
     }
@@ -206,7 +228,6 @@ inline ProdRet<Lhs, Rhs> SparseSparseMatMulImpl(const Lhs &lhsEval,
       ret.InnerIdx(ret.OuterIdx(i) + j) = idx_bucket[j];
       ret.Data(ret.OuterIdx(i) + j) = extended[idx_bucket[j]];
       extended[idx_bucket[j]] = 0;
-      mask[idx_bucket[j]] = 0;
     }
     ret.OuterIdx(i + 1) = ret.OuterIdx(i) + nnz;
   }
