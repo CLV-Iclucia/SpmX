@@ -57,6 +57,9 @@ public:
   using Base::operator*=;
   using Base::operator+=;
   using Base::operator-=;
+  using Base::Dim;
+  using Base::InnerDim;
+  using Base::OuterDim;
   static constexpr bool outer_idx_enabled =
       traits<SparseMatrix>::storage == Sparse &&
       !is_supported_vector<SparseMatrix>;
@@ -184,11 +187,11 @@ public:
         Iterator it = begin;
         while (it != end) {
           uint outer = (cur_outer = (Major == RowMajor || Major == Symmetric)
-                                       ? std::get<0>(*it)
-                                       : std::get<1>(*it));
+                                        ? std::get<0>(*it)
+                                        : std::get<1>(*it));
           uint inner = (cur_inner = (Major == RowMajor || Major == Symmetric)
-                                       ? std::get<1>(*it)
-                                       : std::get<0>(*it));
+                                        ? std::get<1>(*it)
+                                        : std::get<0>(*it));
           while (outer >= outer_idx) {
             outer_idx_[outer_idx] = nnz_;
             outer_idx++;
@@ -635,27 +638,15 @@ public:
     static_assert(traits<SparseMatrix>::storage == Dense);
     return data_[i];
   }
-  uint OuterDim() const {
-    if constexpr (Major == RowMajor || Major == Symmetric)
-      return Rows();
-    else
-      return Cols();
-  }
-  uint InnerDim() const {
-    if constexpr (Major == RowMajor || Major == Symmetric)
-      return Cols();
-    else
-      return Rows();
-  }
+
   uint NonZeroEst() const {
     if constexpr (nRows && nCols)
       return nRows * nCols;
     else
       return nnz_;
   }
-  uint Dim() const { return Rows() * Cols(); }
   const SparseStorage &Storage() const { return storage_; }
-  SparseStorage& Storage() { return storage_; }
+  SparseStorage &Storage() { return storage_; }
   uint *OuterIndices() const { return outer_idx_; }
   uint *InnerIndices() const { return storage_.InnerIndices(); }
   uint OuterIdx(uint i) const {
@@ -674,17 +665,20 @@ public:
   Real Data(uint i) const {
     if constexpr (storageType == Sparse)
       return storage_.Data(i);
-    else return data_[i];
+    else
+      return data_[i];
   }
   Real &Data(uint i) {
     if constexpr (storageType == Sparse)
       return storage_.Data(i);
-    else return data_[i];
+    else
+      return data_[i];
   }
   Real *Datas() const {
     if constexpr (storageType == Sparse)
       return storage_.Datas();
-    else return data_;
+    else
+      return data_;
   }
   int IndexAt(uint i, uint j) const {
     uint idx = storage_.SearchIndex(OuterIdx(), j);
@@ -772,7 +766,7 @@ public:
 
   template <typename Func> void ForEachNonZeros(Func &&f) {
     for (NonZeroIterator it(*this); it(); ++it)
-      it.value() = f(it.value());
+      f(it.value());
   }
 
   bool IsSquare() const { return Rows() == Cols(); }
@@ -821,24 +815,118 @@ using SparseMat = SparseMatrix<M, N, Sparse, RowMajor>;
 using SymSparseMatrixXd = SparseMatrix<0, 0, Sparse, Symmetric>;
 template <uint N> using SymSparseMatrix = SparseMatrix<N, N, Sparse, Symmetric>;
 
+/**
+ * use SOA instead of AOS
+ */
 template <uint nRows, uint nCols, StorageMajor Major>
 class TripletSparseMatrix
-    : SparseMatrixBase<TripletSparseMatrix<nRows, nCols, Major>> {
+    : public SparseMatrixBase<TripletSparseMatrix<nRows, nCols, Major>> {
+  using Base = SparseMatrixBase<TripletSparseMatrix<nRows, nCols, Major>>;
+
 public:
+  using Base::toTriplets;
+  using Base::operator*;
+  using Base::operator+;
+  using Base::operator-;
+  using Base::operator*=;
+  using Base::operator+=;
+  using Base::operator-=;
+  using Base::Dim;
+  using Base::InnerDim;
+  using Base::OuterDim;
+  TripletSparseMatrix(uint n_rows, uint n_cols) {
+    n_rows_ = n_rows;
+    n_cols_ = n_cols;
+  }
   TripletSparseMatrix(uint n_rows, uint n_cols, uint nnz)
       : n_rows_(n_rows), n_cols_(n_cols), nnz_(nnz) {
     outer_idx_ = new uint[nnz];
     inner_idx_ = new uint[nnz];
     data_ = new Real[nnz];
   }
-  template <typename Iterator>
-  void SetFromTriplets(Iterator begin, Iterator end) {
-    // TODO: Implement SetFromTriplets
+  void Reserve(uint nnz) {
+    uint *new_outer_idx = new uint[nnz];
+    uint *new_inner_idx = new uint[nnz];
+    Real *new_data = new Real[nnz];
+#ifdef MEMORY_TRACING
+    MEMORY_LOG_ALLOC(TripletSparseMatrix, nnz);
+#endif
+    if (outer_idx_ != nullptr) {
+      memcpy(new_outer_idx, outer_idx_, sizeof(uint) * nnz_);
+      memcpy(new_inner_idx, inner_idx_, sizeof(uint) * nnz_);
+      memcpy(new_data, data_, sizeof(Real) * nnz_);
+    }
+    delete[] outer_idx_;
+    delete[] inner_idx_;
+    delete[] data_;
+    outer_idx_ = new_outer_idx;
+    inner_idx_ = new_inner_idx;
+    data_ = new_data;
   }
+  template <typename Iterator>
+  void SetFromTriplets(Iterator begin, Iterator end, uint options = 0) {
+    if (!(options & Ordered))
+      std::sort(begin, end, TripletCmp<Major>);
+    uint size = 0;
+    for (Iterator it = begin; it != end; it++)
+      size++;
+    Reserve(size);
+    nnz_ = 0;
+    if (options & NoRepeat) {
+      for (Iterator it = begin; it != end; it++) {
+        uint outer = (Major == RowMajor || Major == Symmetric)
+                         ? std::get<0>(*it)
+                         : std::get<1>(*it);
+        uint inner = (Major == RowMajor || Major == Symmetric)
+                         ? std::get<1>(*it)
+                         : std::get<0>(*it);
+        outer_idx_[nnz_] = outer;
+        inner_idx_[nnz_] = inner;
+        data_[nnz_] = std::get<2>(*it);
+        nnz_++;
+      }
+    } else {
+      uint cur_outer, cur_inner;
+      Iterator it = begin;
+      while (it != end) {
+        uint outer = (cur_outer = (Major == RowMajor || Major == Symmetric)
+                                      ? std::get<0>(*it)
+                                      : std::get<1>(*it));
+        uint inner = (cur_inner = (Major == RowMajor || Major == Symmetric)
+                                      ? std::get<1>(*it)
+                                      : std::get<0>(*it));
+        outer_idx_[nnz_] = outer;
+        inner_idx_[nnz_] = inner;
+        data_[nnz_] = 0.0;
+        while (outer == cur_outer && inner == cur_inner) {
+          data_[nnz_] += std::get<2>(*it);
+          ++it;
+          if (it == end)
+            break;
+          outer = Major == RowMajor || Major == Symmetric ? std::get<0>(*it)
+                                                          : std::get<1>(*it);
+          inner = Major == RowMajor || Major == Symmetric ? std::get<1>(*it)
+                                                          : std::get<0>(*it);
+        }
+        nnz_++;
+      }
+    }
+  }
+  uint Rows() const { return n_rows_; }
+  uint Cols() const { return n_cols_; }
   uint OuterIdx(uint i) const { return outer_idx_[i]; }
   uint InnerIdx(uint i) const { return inner_idx_[i]; }
   uint Data(uint i) const { return data_[i]; }
-
+  uint NonZeroEst() const { return nnz_; }
+  friend std::ostream &operator<<(std::ostream &o,
+                                  const TripletSparseMatrix &spm) {
+    NonZeroIterator it(spm);
+    while (it()) {
+      o << it.Row() << ", " << it.Col() << ", " << it.value() << std::endl;
+      ++it;
+    }
+    return o;
+  }
   class NonZeroIterator;
   ~TripletSparseMatrix() {
     delete[] outer_idx_;
@@ -877,12 +965,24 @@ template <uint nRows, uint nCols, StorageMajor Major>
 class TripletSparseMatrix<nRows, nCols, Major>::NonZeroIterator {
 public:
   using SparseMatrix = TripletSparseMatrix<nRows, nCols, Major>;
-  NonZeroIterator(const SparseMatrix &mat, uint begin, uint end)
-      : cur_(begin), end_(end), outer_idx_(mat.outer_idx_),
+  explicit NonZeroIterator(const SparseMatrix &mat)
+      : end_(mat.NonZeroEst()), outer_idx_(mat.outer_idx_),
         inner_idx_(mat.inner_idx_), data_(mat.data_) {}
+  uint Row() const {
+    if constexpr (Major == RowMajor || Major == Symmetric)
+      return Outer();
+    else
+      return Inner();
+  }
+  uint Col() const {
+    if constexpr (Major == RowMajor || Major == Symmetric)
+      return Inner();
+    else
+      return Outer();
+  }
   uint Outer() const { return outer_idx_[cur_]; }
   uint Inner() const { return inner_idx_[cur_]; }
-  Real Data() const { return data_[cur_]; }
+  Real value() const { return data_[cur_]; }
   bool operator()() const { return cur_ < end_; }
   NonZeroIterator &operator++() {
     cur_++;
@@ -890,11 +990,12 @@ public:
   }
 
 private:
-  uint cur_;
-  uint end_;
+  uint cur_ = 0;
+  uint end_ = 0;
   uint *outer_idx_;
   uint *inner_idx_;
   Real *data_;
 };
+
 } // namespace spmx
 #endif // SPMX_SPARSE_MATRIX_H

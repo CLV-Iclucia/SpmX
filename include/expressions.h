@@ -34,6 +34,9 @@ public:
   using Base::operator*;
   using Base::operator+;
   using Base::operator-;
+  using Base::OuterDim;
+  using Base::InnerDim;
+  using Base::Dim;
   Rhs Eval() {
     if constexpr (traits<Rhs>::storage == Dense) {
       RetType ret(rhs_.Rows(), rhs_.Cols());
@@ -101,8 +104,6 @@ public:
   uint NonZeroEst() const { return rhs_.NonZeroEst(); }
   uint Rows() const { return rhs_.Rows(); }
   uint Cols() const { return rhs_.Cols(); }
-  uint OuterDim() const { return rhs_.OuterDim(); }
-  uint InnerDim() const { return rhs_.InnerDim(); }
 
 private:
   Real coeff_ = 0;
@@ -126,6 +127,9 @@ public:
   using Base::operator*;
   using Base::operator+;
   using Base::operator-;
+  using Base::OuterDim;
+  using Base::InnerDim;
+  using Base::Dim;
   LinearExpr(const Lhs &lhs, const Rhs &rhs) : lhs_(lhs), rhs_(rhs) {}
   LinearExpr(const LinearExpr&) = delete;
   LinearExpr(LinearExpr&&) = delete;
@@ -317,8 +321,6 @@ public:
   const Rhs &RhsExpr() const { return rhs_; }
   uint Rows() const { return lhs_.Rows(); }
   uint Cols() const { return lhs_.Cols(); }
-  uint OuterDim() const { return lhs_.OuterDim(); }
-  uint InnerDim() const { return lhs_.InnerDim(); }
   uint NonZeroEst() const { return lhs_.NonZeroEst() + rhs_.NonZeroEst(); }
 
 private:

@@ -136,16 +136,15 @@ public:
       used_size_ = allocated_size_;
   }
 
-  uint SearchIndex(uint l, uint r, uint idx) const {
-    while (l <= r) {
+  uint LowerBound(uint l, uint r, uint idx) const {
+    while (l < r) {
       uint mid = (l + r) >> 1;
       if (inner_idx_[mid] < idx)
-        r = mid - 1;
-      else if (inner_idx_[mid] == idx)
-        return static_cast<int>(mid);
+        r = mid;
       else
-        l = mid + 1;
+        l = mid;
     }
+    return l;
   }
 
   void Reserve(uint size) {

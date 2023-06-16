@@ -35,8 +35,18 @@ public:
   inline typename traits<Derived>::EvalType Eval() const {
     return derived().Eval();
   }
-  inline uint OuterDim() const { return derived().OuterDim(); }
-  inline uint InnerDim() const { return derived().InnerDim(); }
+  uint OuterDim() const {
+    if constexpr (traits<Derived>::major == RowMajor || traits<Derived>::major == Symmetric)
+      return derived().Rows();
+    else
+      return derived().Cols();
+  }
+  uint InnerDim() const {
+    if constexpr (traits<Derived>::major == RowMajor || traits<Derived>::major == Symmetric)
+      return derived().Cols();
+    else
+      return derived().Rows();
+  }
   inline uint OuterIdx(uint i) const { return derived().OuterIdx(i); }
   inline uint InnerIdx(uint i) const { return derived().InnerIdx(i); }
   inline Real Data(uint i) const { return derived().Data(i); }
@@ -54,14 +64,6 @@ public:
    * Sparse matrix multiplication.
    * All the return types are SparseMatrix, so it makes no sense to support
    * multiplication of other possible matrix storage.
-   * first we need to evaluate the lhs and rhs, if they are expressions
-   * we will convert them to SparseMatrix class and perform multiplication
-   * there is one special case where at least one of lhs and rhs is a matrix
-   * in that case, we will use the const reference instead of an evaluation
-   * note that both lhsEval and rhsEval (if they are the evaluation of
-   * expressions) can only survive in this function, but since we
-   * evaluate immediately, when the function returns the returned
-   * matrix is already available and we can safely destruct them.
    * @tparam Rhs
    * @param rhs
    * @return
