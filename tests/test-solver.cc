@@ -46,7 +46,6 @@ void TestSolve() {
     for(uint i = 0; i < n; i++)
       b(i) = RandReal();
     Vector<Dense> ans;
-    std::cout << nnz << std::endl;
     if constexpr (Test == TEST_CHOLESKY) {
       SimplicialLLT<SparseMatrix<0, 0, Sparse, Symmetric>> solver;
       solver.Compute(mat);
@@ -65,7 +64,7 @@ void TestSolve() {
       Real eps = MaxNorm(mat * ans - b);
       if (!SimZero(eps)) {
         std::cerr << "the error is " << eps << std::endl;
-        if (eps > 10.0) {
+        if (eps > 10.0 || eps != eps) {
           std::cerr << "the error is too big, retrying" << std::endl;
           RandFill(ans);
           solver.Solve(mat, b, ans);

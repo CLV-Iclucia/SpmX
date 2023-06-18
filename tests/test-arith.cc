@@ -10,8 +10,8 @@ const uint TEST_DENSE_MMUL = 1u << 3;
 const uint TEST_MV_MUL = 1u << 4;
 
 using namespace spmx;
-const uint MAX_ROWS = 1000, MAX_COLS = 1000, MAX_NNZ = 3000;
-const uint TESTS = TEST_MMUL;
+const uint MAX_ROWS = 1000, MAX_COLS = 1000, MAX_NNZ = 6000;
+const uint TESTS = TEST_SET | TEST_LIN;
 Triplet tList[MAX_NNZ];
 const int MAX_CASES = 100;
 static Real golden[MAX_ROWS][MAX_COLS];
@@ -28,7 +28,8 @@ void RandFillMat(Real mat[][MAX_COLS], uint m, uint n, uint nnz) {
   }
 }
 
-bool TestSame(Real stdmat[][MAX_COLS], const SparseMatrixXd &spm) {
+template <typename T>
+bool TestSame(Real stdmat[][MAX_COLS], const T &spm) {
   static std::vector<Triplet> v;
   v.clear();
   spm.toTriplets(v);
@@ -83,8 +84,7 @@ void TestSet() {
     uint n = Randu() % MAX_COLS + 1;
     uint nnz = Randu() % MAX_NNZ + 1;
     RandFillMat(golden, m, n, nnz);
-    SparseMatrixXd spm;
-    spm.Resize(m, n);
+    TripletSparseMatrix<0, 0, RowMajor> spm(m, n);
     spm.SetFromTriplets(tList, tList + nnz);
     if (!TestSame(golden, spm)) {
       std::cerr << "Failed test setFromTriplets. Failing case is:" << std::endl;
@@ -115,16 +115,16 @@ void TestLin() {
     Real a = RandReal();
     Real b = RandReal();
     Real c = RandReal();
-    SparseMatrixXd spmA, spmB, spm, spmC;
+    SparseMatrixXd spmA, spm, spmC;
     RandFillMat(A, m, n, nnz);
     spmA.Resize(m, n);
     spmA.SetFromTriplets(tList, tList + nnz);
     nnz = Randu() % MAX_NNZ;
     RandFillMat(B, m, n, nnz);
+    TripletSparseMatrix<0, 0, RowMajor> spmB(m, n);
     for (uint i = 0; i < m; i++)
       for (uint j = 0; j < n; j++)
         golden[i][j] = a * A[i][j] - b * B[i][j];
-    spmB.Resize(m, n);
     spmB.SetFromTriplets(tList, tList + nnz);
     nnz = Randu() % MAX_NNZ + 1;
     RandFillMat(C, m, n, nnz);
