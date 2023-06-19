@@ -459,7 +459,10 @@ public:
     SetShape(other.Rows(), other.Cols());
   }
 
-  void Prune() { nnz_ = outer_idx_[OuterDim()]; }
+  void Prune() {
+    nnz_ = outer_idx_[OuterDim()];
+    Storage().SetUsed(nnz_);
+  }
   SparseMatrix &operator=(SparseMatrix &&other) noexcept {
     if (&other == this)
       return *this;

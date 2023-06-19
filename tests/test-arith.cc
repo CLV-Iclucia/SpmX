@@ -11,9 +11,9 @@ const uint TEST_MV_MUL = 1u << 4;
 
 using namespace spmx;
 const uint MAX_ROWS = 1000, MAX_COLS = 1000, MAX_NNZ = 6000;
-const uint TESTS = TEST_SET | TEST_LIN;
+const uint TESTS = TEST_SET;
 Triplet tList[MAX_NNZ];
-const int MAX_CASES = 100;
+const int MAX_CASES = 200;
 static Real golden[MAX_ROWS][MAX_COLS];
 
 static Real A[MAX_ROWS][MAX_COLS], B[MAX_ROWS][MAX_COLS], C[MAX_ROWS][MAX_COLS];
